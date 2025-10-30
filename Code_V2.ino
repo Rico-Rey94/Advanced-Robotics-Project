@@ -7,28 +7,28 @@
 // Motor Objects
 // ==========================
 AF_DCMotor rightFront(1);
-AF_DCMotor leftFront(2);
+AF_DCMotor rightBack(2);
 AF_DCMotor leftBack(3);
-AF_DCMotor rightBack(4);
+AF_DCMotor leftFront(4);
 
 // ==========================
 // Encoder Objects
 // ==========================
-#define ENC1_A 23
-#define ENC1_B 25
-#define ENC2_A 27
-#define ENC2_B 29
-#define ENC3_A 31
-#define ENC3_B 33
-#define ENC4_A 35
-#define ENC4_B 37
+#define ENC1_A 42
+#define ENC1_B 40
+#define ENC2_A 52
+#define ENC2_B 50
+#define ENC3_A 30
+#define ENC3_B 28
+#define ENC4_A 24
+#define ENC4_B 22
 
 volatile long encoderCount[4] = {0, 0, 0, 0};
 
 // ==========================
 // Servo and Sensor Pins
 // ==========================
-#define SERVO_PIN 10
+#define SERVO_PIN 23
 #define TRIG_PIN 35
 #define ECHO_PIN 37
 #define OBSTACLE_PIN A9  // VM330 output pin
