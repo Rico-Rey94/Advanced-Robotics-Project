@@ -32,17 +32,19 @@ volatile long encoderCount[4] = {0, 0, 0, 0};
 #define TRIG_PIN 35
 #define ECHO_PIN 37
 #define OBSTACLE_PIN A9  // VM330 output pin
+#define ENABLE_PIN A10 // VM330 enable pin
 
 Servo servoLook;
 
 // ==========================
 // Global Variables
 // ==========================
-volatile bool obstacleDetected = false;  // Flag for interrupt
+volatile uint8_t obstacleDetected = 0;
 
 byte maxDist = 200;
 byte stopDist = 20;
-float timeOut = 2*(maxDist+10)/100/340*1000000;
+unsigned long timeOut = maxDist * 58 * 2; // µs for round trip
+
 
 byte motorSpeed = 140;
 int motorOffset = 10;
@@ -56,6 +58,11 @@ long previousEncoderPositions[4] = {0, 0, 0, 0};
 float distanceTraveled = 0;
 float totalDistance = 0;
 
+int rightAngle = 45;
+int leftAngle = 135;
+
+unsigned long lastDistanceUpdate = 0;
+const unsigned long updateInterval = 100; // ms
 
 // ==========================
 // Navigation State Machine
@@ -74,14 +81,54 @@ NavigationState currentState = MOVING_FORWARD;
 // INTERRUPT SERVICE ROUTINE
 // ==========================
 
-void encoder1A_ISR() { encoderCount[0]++; }
-void encoder1B_ISR() { encoderCount[0]--; }
-void encoder2A_ISR() { encoderCount[1]++; }
-void encoder2B_ISR() { encoderCount[1]--; }
-void encoder3A_ISR() { encoderCount[2]++; }
-void encoder3B_ISR() { encoderCount[2]--; }
-void encoder4A_ISR() { encoderCount[3]++; }
-void encoder4B_ISR() { encoderCount[3]--; }
+void encoder1A_ISR() {
+  if (digitalRead(ENC1_A) == digitalRead(ENC1_B))
+    encoderCount[0]++;
+  else
+    encoderCount[0]--;
+}
+void encoder1B_ISR() {
+  if (digitalRead(ENC1_A) != digitalRead(ENC1_B))
+    encoderCount[0]++;
+  else
+    encoderCount[0]--;
+}
+void encoder2A_ISR() {
+  if (digitalRead(ENC2_A) == digitalRead(ENC2_B))
+    encoderCount[1]++;
+  else
+    encoderCount[1]--;
+}
+void encoder2B_ISR() {
+  if (digitalRead(ENC2_A) != digitalRead(ENC2_B))
+    encoderCount[1]++;
+  else
+    encoderCount[1]--;
+}
+void encoder3A_ISR() {
+  if (digitalRead(ENC3_A) == digitalRead(ENC3_B))
+    encoderCount[2]++;
+  else
+    encoderCount[2]--;
+}
+void encoder3B_ISR() {
+  if (digitalRead(ENC3_A) != digitalRead(ENC3_B))
+    encoderCount[2]++;
+  else
+    encoderCount[2]--;
+}
+void encoder4A_ISR() {
+  if (digitalRead(ENC4_A) == digitalRead(ENC4_B))
+    encoderCount[3]++;
+  else
+    encoderCount[3]--;
+}
+void encoder4B_ISR() {
+  if (digitalRead(ENC4_A) != digitalRead(ENC4_B))
+    encoderCount[3]++;
+  else
+    encoderCount[3]--;
+}
 
 void obstacleISR() {
   // Triggered when VM330 detects object
@@ -105,6 +152,9 @@ void setup() {
   // Initialize servo
   servoLook.attach(SERVO_PIN);
   servoLook.write(90);
+  pinMode(ENABLE_PIN, OUTPUT);
+  digitalWrite(ENABLE_PIN, HIGH); // or LOW depending on module spec
+
 
   // Initialize ultrasonic
   pinMode(TRIG_PIN, OUTPUT);
@@ -134,7 +184,7 @@ void setup() {
   pinMode(OBSTACLE_PIN, INPUT);
   PCintPort::attachInterrupt(OBSTACLE_PIN, obstacleISR, RISING);
 
-  delay(2000);
+  delay(10);
   Serial.println("Robot initialized. Starting navigation...");
 }
 
@@ -142,6 +192,11 @@ void setup() {
 // Main Loop
 // ==========================
 void loop() {
+  unsigned long now = millis();
+  if (now - lastDistanceUpdate >= updateInterval) {
+    updateDistanceTraveled();
+    lastDistanceUpdate = now;
+  }
   // Handle obstacle interrupt event
   if (obstacleDetected) {
     obstacleDetected = false;
@@ -149,12 +204,17 @@ void loop() {
 
     stopMove();
     servoLook.write(45); // Turn servo 45° right
-    delay(1000);
+    delay(10);
     servoLook.write(90); // Return to center
-    delay(500);
+    delay(10);
 
     currentState = OBSTACLE_DETECTED;
   }
+
+  if (totalDistance >= 100.0) { // cm
+  currentState = REACHED_TARGET;
+  }
+
 
   switch (currentState) {
     case MOVING_FORWARD:
@@ -180,7 +240,7 @@ void loop() {
 // ==========================
 void handleForwardMovement() {
   servoLook.write(90);
-  delay(50);
+  delay(10);
 
   int frontDistance = getDistance();
   Serial.print("Distance: "); Serial.println(frontDistance);
@@ -197,22 +257,22 @@ void handleForwardMovement() {
 void handleObstacleDetection() {
   stopMove();
   Serial.println("Handling Obstacle...");
-  delay(500);
+  delay(10);
   currentState = SCANNING;
 }
 
 void handleScanning() {
   Serial.println("Scanning left and right...");
-  servoLook.write(0);
-  delay(600);
+  servoLook.write(rightAngle);
+  delay(10);
   int rightDist = getDistance();
 
-  servoLook.write(180);
-  delay(600);
+  servoLook.write(leftAngle);
+  delay(10);
   int leftDist = getDistance();
 
   servoLook.write(90);
-  delay(400);
+  delay(10);
 
   if (rightDist > leftDist) {
     turnRight(450);
@@ -266,14 +326,22 @@ void turnRight(int duration) {
 // Utility Functions
 // ==========================
 int getDistance() {
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  unsigned long pulseTime = pulseIn(ECHO_PIN, HIGH, timeOut);
-  int distance = pulseTime * 0.034 / 2;
+  long sum = 0;
+  int valid = 0;
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
+    unsigned long pulseTime = pulseIn(ECHO_PIN, HIGH, timeOut);
+    if (pulseTime > 0) {
+      sum += pulseTime;
+      valid++;
+    }
+  }
+  if (valid == 0) return maxDist; // assume clear
+  int distance = (sum / valid) * 0.034 / 2;
   return distance;
 }
 
