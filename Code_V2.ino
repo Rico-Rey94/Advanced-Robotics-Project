@@ -277,9 +277,11 @@ void handleForwardMovement() {
     currentState = OBSTACLE_DETECTED;
   } else {
     moveForward();
+    adjustMotorBalance();  // <-- new feedback correction
     updateDistanceTraveled();
   }
 }
+
 
 void handleObstacleDetection() {
   stopMove();
