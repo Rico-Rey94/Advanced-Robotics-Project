@@ -30,7 +30,7 @@ volatile long encoderCount[4] = {0,0,0,0};
 #define SERVO_PIN 23
 #define TRIG_PIN 35
 #define ECHO_PIN 37
-#define OBSTACLE_PIN 36  // VM330 output
+#define OBSTACLE_PIN 47  // VM330 output
 
 ServoTimer2 servoLook;
 
