@@ -135,6 +135,33 @@ void obstacleISR() {
   obstacleDetected = true;
 }
 
+void adjustMotorBalance() {
+  // compute deltas
+  static long prevLeft = 0, prevRight = 0;
+  long leftNow = encoderCount[2] + encoderCount[3];
+  long rightNow = encoderCount[0] + encoderCount[1];
+  
+  long leftDelta = leftNow - prevLeft;
+  long rightDelta = rightNow - prevRight;
+  
+  prevLeft = leftNow;
+  prevRight = rightNow;
+  
+  long diff = leftDelta - rightDelta;
+
+  // small proportional correction factor
+  int correction = diff * 0.1;  // tune gain: try 0.05–0.2
+
+  int leftSpeed = constrain(motorSpeed - correction, 0, 255);
+  int rightSpeed = constrain(motorSpeed + correction, 0, 255);
+
+  leftFront.setSpeed(leftSpeed + motorOffset);
+  leftBack.setSpeed(leftSpeed + motorOffset);
+  rightFront.setSpeed(rightSpeed);
+  rightBack.setSpeed(rightSpeed);
+}
+
+
 // ==========================
 // Setup
 // ==========================
