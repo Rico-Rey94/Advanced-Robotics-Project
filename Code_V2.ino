@@ -1,48 +1,42 @@
 #include <AFMotor.h>
-#include <PinChangeInt.h>
 #include <Servo.h>
 
 // ==========================
-// Motor Objects
+// Motor Objects (Adafruit L293D Shield)
 // ==========================
-AF_DCMotor rightFront(1);
-AF_DCMotor rightBack(2);
-AF_DCMotor leftBack(3);
-AF_DCMotor leftFront(4);
+AF_DCMotor rightFront(1); // M1
+AF_DCMotor rightBack(2);  // M2
+AF_DCMotor leftBack(3);   // M3
+AF_DCMotor leftFront(4);  // M4
 
 // ==========================
-// Encoder Pins
+// Encoder Pins (Hardware Interrupts)
 // ==========================
-#define ENC1_A 18
+#define ENC1_A 18 // INT5
 #define ENC1_B 40
-#define ENC2_A 19
+#define ENC2_A 19 // INT4
 #define ENC2_B 44
-#define ENC3_A 20
+#define ENC3_A 20 // INT3
 #define ENC3_B 28
-#define ENC4_A 21
+#define ENC4_A 21 // INT2
 #define ENC4_B 22
 
-volatile long encoderCount[4] = {0,0,0,0};
+volatile long encoderCount[4] = {0, 0, 0, 0};
 
 // ==========================
-// Servo and Sensor Pins
+// Servo + Ultrasonic + Obstacle Sensor
 // ==========================
 #define SERVO_PIN 23
 #define TRIG_PIN 35
 #define ECHO_PIN 37
-#define OBSTACLE_PIN 51  // VM330 output
+#define OBSTACLE_PIN 51 // VM330 output, hardware interrupt
 
 Servo servoLook;
+volatile bool obstacleDetected = false;
 
 // ==========================
-// Global Variables
+// Motion Variables
 // ==========================
-volatile uint8_t obstacleDetected = 0;
-
-byte maxDist = 200;
-byte stopDist = 20;
-unsigned long timeOut = maxDist * 58 * 2; // µs
-
 int motorSpeed = 140;
 int motorOffset = 10;
 
@@ -51,14 +45,14 @@ int motorOffset = 10;
 // ==========================
 unsigned long lastSpeedCheck = 0;
 const unsigned long speedCheckInterval = 100; // ms
-long prevEncoderCount[4] = {0,0,0,0};
-float wheelSpeed[4] = {0,0,0,0}; // ticks/sec
+long prevEncoderCount[4] = {0, 0, 0, 0};
+float wheelSpeed[4] = {0, 0, 0, 0}; // ticks/sec
 
-float targetSpeed = 500.0; // nominal encoder ticks per second
-float Kp = 0.05;            // proportional gain (tune this)
+float targetSpeed = 500.0; // nominal ticks/sec
+float Kp = 0.05;           // proportional gain
 
 // ==========================
-// Navigation State Machine
+// Navigation State
 // ==========================
 enum NavigationState {
   MOVING_FORWARD,
@@ -70,37 +64,37 @@ enum NavigationState {
 NavigationState currentState = MOVING_FORWARD;
 
 // ==========================
-// Timing Control for Turns
+// Timing for Turns
 // ==========================
 unsigned long motionStartTime = 0;
 unsigned long motionDuration = 0;
 bool motionActive = false;
 
 // ==========================
-// Encoder ISRs (Hardware Interrupts)
+// Encoder ISRs (A channel only)
 // ==========================
 void encoder1A_ISR() {
-  if (digitalRead(ENC1_B)) encoderCount[0]++;
-  else encoderCount[0]--;
+  bool b = digitalRead(ENC1_B);
+  encoderCount[0] += b ? 1 : -1;
 }
 void encoder2A_ISR() {
-  if (digitalRead(ENC2_B)) encoderCount[1]++;
-  else encoderCount[1]--;
+  bool b = digitalRead(ENC2_B);
+  encoderCount[1] += b ? 1 : -1;
 }
 void encoder3A_ISR() {
-  if (digitalRead(ENC3_B)) encoderCount[2]++;
-  else encoderCount[2]--;
+  bool b = digitalRead(ENC3_B);
+  encoderCount[2] += b ? 1 : -1;
 }
 void encoder4A_ISR() {
-  if (digitalRead(ENC4_B)) encoderCount[3]++;
-  else encoderCount[3]--;
+  bool b = digitalRead(ENC4_B);
+  encoderCount[3] += b ? 1 : -1;
 }
 
 // ==========================
-// Obstacle ISR (Software Interrupt)
+// Obstacle ISR (Pin 51)
 // ==========================
 void obstacleISR() {
-  obstacleDetected = 1;
+  obstacleDetected = true;
 }
 
 // ==========================
@@ -108,15 +102,16 @@ void obstacleISR() {
 // ==========================
 void setup() {
   Serial.begin(9600);
+  Serial.println("Initializing robot...");
 
-  // Initialize motors
+  // Motor setup
   rightBack.setSpeed(motorSpeed);
   rightFront.setSpeed(motorSpeed);
   leftFront.setSpeed(motorSpeed + motorOffset);
   leftBack.setSpeed(motorSpeed + motorOffset);
   stopMove();
 
-  // Ultrasonic
+  // Ultrasonic sensor
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
@@ -130,15 +125,15 @@ void setup() {
   pinMode(ENC4_A, INPUT_PULLUP);
   pinMode(ENC4_B, INPUT_PULLUP);
 
-  // Attach hardware interrupts (ENCx_A)
+  // Attach hardware interrupts (Mega: 2–5, pins 21–18)
   attachInterrupt(digitalPinToInterrupt(ENC1_A), encoder1A_ISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC2_A), encoder2A_ISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC3_A), encoder3A_ISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENC4_A), encoder4A_ISR, CHANGE);
 
-  // Attach software interrupt for obstacle (PinChangeInt)
+  // Obstacle sensor
   pinMode(OBSTACLE_PIN, INPUT);
-  PCintPort::attachInterrupt(OBSTACLE_PIN, obstacleISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(OBSTACLE_PIN), obstacleISR, RISING);
 
   delay(10);
   Serial.println("Robot initialized. Starting navigation...");
@@ -157,8 +152,8 @@ void loop() {
   }
 
   if (obstacleDetected) {
-    obstacleDetected = 0;
-    Serial.println("VM330 Obstacle detected via interrupt!");
+    obstacleDetected = false;
+    Serial.println("Obstacle detected!");
     stopMove();
     currentState = OBSTACLE_DETECTED;
   }
@@ -184,13 +179,11 @@ void loop() {
 }
 
 // ==========================
-// Motion + Logic Functions
+// Motion + Logic
 // ==========================
 void handleForwardMovement() {
   int frontDistance = getDistance();
-  Serial.print("Distance: "); Serial.println(frontDistance);
-
-  if (frontDistance < stopDist) {
+  if (frontDistance < 20) {
     stopMove();
     currentState = OBSTACLE_DETECTED;
   } else {
@@ -205,37 +198,33 @@ void handleObstacleDetection() {
 }
 
 void handleScanning() {
-  Serial.println("Scanning left and right...");
+  Serial.println("Scanning surroundings...");
   int rightDist = getDistance();
   int leftDist = getDistance();
-
-  if (rightDist > leftDist) {
-    turnRight(450);
-  } else {
-    turnLeft(450);
-  }
+  if (rightDist > leftDist) turnRight(450);
+  else turnLeft(450);
 }
 
 // ==========================
-// Motion Control
+// Motor Control
 // ==========================
 void moveForward() {
-  rightBack.run(FORWARD);
   rightFront.run(FORWARD);
+  rightBack.run(FORWARD);
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
 }
 
 void stopMove() {
-  rightBack.run(RELEASE);
   rightFront.run(RELEASE);
+  rightBack.run(RELEASE);
   leftFront.run(RELEASE);
   leftBack.run(RELEASE);
 }
 
 void turnLeft(unsigned long duration) {
-  rightBack.run(FORWARD);
   rightFront.run(FORWARD);
+  rightBack.run(FORWARD);
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
   motionStartTime = millis();
@@ -245,8 +234,8 @@ void turnLeft(unsigned long duration) {
 }
 
 void turnRight(unsigned long duration) {
-  rightBack.run(BACKWARD);
   rightFront.run(BACKWARD);
+  rightBack.run(BACKWARD);
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
   motionStartTime = millis();
@@ -300,7 +289,7 @@ void speedCorrection() {
 }
 
 // ==========================
-// Ultrasonic Utility
+// Ultrasonic Distance
 // ==========================
 int getDistance() {
   long sum = 0;
@@ -311,13 +300,13 @@ int getDistance() {
     digitalWrite(TRIG_PIN, HIGH);
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
-    unsigned long pulseTime = pulseIn(ECHO_PIN, HIGH, timeOut);
+    unsigned long pulseTime = pulseIn(ECHO_PIN, HIGH, 15000);
     if (pulseTime > 0) {
       sum += pulseTime;
       valid++;
     }
   }
-  if (valid == 0) return maxDist;
+  if (valid == 0) return 200;
   int distance = (sum / valid) * 0.034 / 2;
   return distance;
 }
