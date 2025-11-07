@@ -1,6 +1,6 @@
 #include <AFMotor.h>
 #include <PinChangeInt.h>
-#include <ServoTimer2.h>
+#include <Servo.h>
 
 // ==========================
 // Motor Objects
@@ -32,7 +32,7 @@ volatile long encoderCount[4] = {0,0,0,0};
 #define ECHO_PIN 37
 #define OBSTACLE_PIN 47  // VM330 output
 
-ServoTimer2 servoLook;
+Servo servoLook;
 
 // ==========================
 // Global Variables
