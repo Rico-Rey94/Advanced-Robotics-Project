@@ -2,7 +2,6 @@
 #include <AFMotor.h>
 #include <PinChangeInt.h>
 #include <Servo.h>
-// [Image of Arduino Mega with Motor Shield and Sensors]
 
 // ==========================
 // Motor Objects and Speed Setup
@@ -26,7 +25,7 @@ const int MOTOR_OFFSET = 10; // For differential steering correction
 
 // B-Channel pins used for direction check inside ISRs
 #define ENC1_B 40
-#define ENC2_B 50
+#define ENC2_B 44
 #define ENC3_B 28
 #define ENC4_B 22
 
@@ -39,7 +38,7 @@ volatile long encoderCount[4] = {0,0,0,0};
 #define SERVO_PIN 9
 #define TRIG_PIN 35 // Ultrasonic Trigger Pin (MUST be OUTPUT)
 #define ECHO_PIN 37 // Ultrasonic Echo Pin (MUST be INPUT)
-#define OBSTACLE_PIN 47 // VM330 output
+#define OBSTACLE_PIN 51 // VM330 output
 
 Servo servoLook;
 
