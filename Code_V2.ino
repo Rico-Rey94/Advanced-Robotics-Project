@@ -29,7 +29,7 @@ volatile long encoderCount[4] = {0, 0, 0, 0};
 #define SERVO_PIN 9
 #define TRIG_PIN 35
 #define ECHO_PIN 37
-#define OBSTACLE_PIN 51 // VM330 output, hardware interrupt
+#define OBSTACLE_PIN 51 // VM330 output, polled in loop
 
 Servo servoLook;
 volatile bool obstacleDetected = false;
@@ -93,9 +93,6 @@ void encoder4A_ISR() {
 // ==========================
 // Obstacle ISR (Pin 51)
 // ==========================
-void obstacleISR() {
-  obstacleDetected = true;
-}
 
 // ==========================
 // Setup
@@ -103,6 +100,10 @@ void obstacleISR() {
 void setup() {
   Serial.begin(9600);
   Serial.println("Initializing robot...");
+
+  // Servo setup
+  servoLook.attach(SERVO_PIN);
+  servoLook.write(90); // Center position
 
   // Motor setup
   rightBack.setSpeed(motorSpeed);
@@ -133,8 +134,7 @@ void setup() {
 
   // Obstacle sensor
   pinMode(OBSTACLE_PIN, INPUT);
-  attachInterrupt(digitalPinToInterrupt(OBSTACLE_PIN), obstacleISR, RISING);
-
+  
   delay(10);
   Serial.println("Robot initialized. Starting navigation...");
 }
@@ -144,6 +144,10 @@ void setup() {
 // ==========================
 void loop() {
   unsigned long now = millis();
+
+if (digitalRead(OBSTACLE_PIN) == HIGH) {
+  obstacleDetected = true;
+}
 
   if (motionActive && now - motionStartTime >= motionDuration) {
     stopMove();
@@ -197,13 +201,28 @@ void handleObstacleDetection() {
   currentState = SCANNING;
 }
 
-void handleScanning() {
+vvoid handleScanning() {
   Serial.println("Scanning surroundings...");
+  Reverse();
+  for (int angle = 60; angle <= 120; angle += 15) {
+    servoLook.write(angle);
+    delay(300);
+  }
   int rightDist = getDistance();
+
+  for (int angle = 120; angle >= 60; angle -= 15) {
+    servoLook.write(angle);
+    delay(300);
+  }
   int leftDist = getDistance();
-  if (rightDist > leftDist) turnRight(450);
-  else turnLeft(450);
+
+  servoLook.write(90); // Center again
+
+  if (rightDist > leftDist) turnRight(450); moveForward();
+  else turnLeft(450); moveForward();
 }
+
+
 
 // ==========================
 // Motor Control
@@ -220,6 +239,15 @@ void stopMove() {
   rightBack.run(RELEASE);
   leftFront.run(RELEASE);
   leftBack.run(RELEASE);
+}
+
+void Reverse() {
+  rightFront.run(BACKWARD);
+  rightBack.run(BACKWARD);
+  leftFront.run(BACKWARD);
+  leftBack.run(BACKWARD);
+  delay(600);
+  stopMove();
 }
 
 void turnLeft(unsigned long duration) {
@@ -307,6 +335,6 @@ int getDistance() {
     }
   }
   if (valid == 0) return 200;
-  int distance = (sum / valid) * 0.034 / 2;
+  int distance = (int)((sum / valid) * 0.034 / 2.0);
   return distance;
 }
