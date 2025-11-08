@@ -145,7 +145,7 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-if (digitalRead(OBSTACLE_PIN) == HIGH) {
+if (digitalRead(OBSTACLE_PIN) == LOW) {
   obstacleDetected = true;
 }
 
@@ -208,19 +208,21 @@ void handleScanning() {
   int rightDist = 0, leftDist = 0;
 
   // Scan right
-  for (int angle = 60; angle <= 120; angle += 15) {
-    servoLook.write(angle);
-    delay(250);
-    rightDist = getDistance();
-  }
+  servoLook.write(170);
+  delay(200);
+  rightDist = getDistance();
 
   // Scan left
-  for (int angle = 120; angle >= 60; angle -= 15) {
-    servoLook.write(angle);
-    delay(250);
-    leftDist = getDistance();
-  }
-  Serial.print("left distance: ", leftDist, " right distance: ", rightDist);
+  servoLook.write(-45);
+  delay(200);
+  leftDist = getDistance();
+
+  Serial.print("Left distance: ");
+  Serial.print(leftDist);
+  Serial.print(" cm | Right distance: ");
+  Serial.print(rightDist);
+  Serial.println(" cm");
+
   servoLook.write(90);
 
   if (rightDist > leftDist) {
