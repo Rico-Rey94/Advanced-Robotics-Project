@@ -201,27 +201,36 @@ void handleObstacleDetection() {
   currentState = SCANNING;
 }
 
-vvoid handleScanning() {
+void handleScanning() {
   Serial.println("Scanning surroundings...");
   Reverse();
+
+  int rightDist = 0, leftDist = 0;
+
+  // Scan right
   for (int angle = 60; angle <= 120; angle += 15) {
     servoLook.write(angle);
-    delay(300);
+    delay(250);
+    rightDist = getDistance();
   }
-  int rightDist = getDistance();
 
+  // Scan left
   for (int angle = 120; angle >= 60; angle -= 15) {
     servoLook.write(angle);
-    delay(300);
+    delay(250);
+    leftDist = getDistance();
   }
-  int leftDist = getDistance();
+  Serial.print("left distance: ", leftDist, " right distance: ", rightDist);
+  servoLook.write(90);
 
-  servoLook.write(90); // Center again
-
-  if (rightDist > leftDist) turnRight(450); moveForward();
-  else turnLeft(450); moveForward();
+  if (rightDist > leftDist) {
+    turnRight(450);
+    moveForward();
+  } else {
+    turnLeft(450);
+    moveForward();
+  }
 }
-
 
 
 // ==========================
@@ -242,10 +251,13 @@ void stopMove() {
 }
 
 void Reverse() {
+  Serial.println("Reversing...");
+  noInterrupts();
   rightFront.run(BACKWARD);
   rightBack.run(BACKWARD);
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
+  interrupts();
   delay(600);
   stopMove();
 }
