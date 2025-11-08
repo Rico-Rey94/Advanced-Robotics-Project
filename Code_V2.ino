@@ -26,7 +26,7 @@ volatile long encoderCount[4] = {0, 0, 0, 0};
 // ==========================
 // Servo + Ultrasonic + Obstacle Sensor
 // ==========================
-#define SERVO_PIN 9
+#define SERVO_PIN 23 //servo signal
 #define TRIG_PIN 35
 #define ECHO_PIN 37
 #define OBSTACLE_PIN 51 // VM330 output, polled in loop
