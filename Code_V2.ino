@@ -89,7 +89,7 @@ void encoder4A_ISR() {
   bool b = digitalRead(ENC4_B);
   encoderCount[3] += b ? 1 : -1;
 }
-x
+
 
 // ==========================
 // Setup
@@ -231,14 +231,14 @@ void handleScanning() {
   // Choose direction
   if (rightDist > leftDist) {
     turnRight(450);
+    servoLook.write(90);
     moveForward();
   } else {
     turnLeft(450);
+    servoLook.write(90);
     moveForward();
   }
 }
-
-
 
 // ==========================
 // Motor Control
