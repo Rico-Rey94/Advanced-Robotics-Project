@@ -89,10 +89,7 @@ void encoder4A_ISR() {
   bool b = digitalRead(ENC4_B);
   encoderCount[3] += b ? 1 : -1;
 }
-
-// ==========================
-// Obstacle ISR (Pin 51)
-// ==========================
+x
 
 // ==========================
 // Setup
@@ -226,10 +223,10 @@ void handleScanning() {
   servoLook.write(90);
 
   if (rightDist > leftDist) {
-    turnRight(450);
+    turnRight(200);
     moveForward();
   } else {
-    turnLeft(450);
+    turnLeft(200);
     moveForward();
   }
 }
