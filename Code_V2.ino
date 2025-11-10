@@ -204,15 +204,23 @@ void handleScanning() {
 
   int rightDist = 0, leftDist = 0;
 
-  // Scan right
-  servoLook.write(170);
-  delay(200);
+  // Move servo to center first
+  servoLook.write(90);
+  delay(300);
+
+  // Scan right (+15°)
+  servoLook.write(105);
+  delay(300);
   rightDist = getDistance();
 
-  // Scan left
-  servoLook.write(-45);
-  delay(200);
+  // Scan left (-15°)
+  servoLook.write(75);
+  delay(300);
   leftDist = getDistance();
+
+  // Return to center
+  servoLook.write(90);
+  delay(300);
 
   Serial.print("Left distance: ");
   Serial.print(leftDist);
@@ -220,16 +228,16 @@ void handleScanning() {
   Serial.print(rightDist);
   Serial.println(" cm");
 
-  servoLook.write(90);
-
+  // Choose direction
   if (rightDist > leftDist) {
-    turnRight(200);
+    turnRight(450);
     moveForward();
   } else {
-    turnLeft(200);
+    turnLeft(450);
     moveForward();
   }
 }
+
 
 
 // ==========================
