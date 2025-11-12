@@ -99,7 +99,7 @@ void setup() {
 
   // Servo setup
   servoLook.attach(SERVO_PIN);
-  servoLook.write(90); // Center position
+  servoLook.write(70); // Center position, offset due to extra weight
 
   // Motor setup
   rightBack.setSpeed(motorSpeed);
@@ -193,11 +193,11 @@ void handleScanning() {
   int rightDist = 0, leftDist = 0;
 
   // Move servo to center first
-  servoLook.write(90);
+  servoLook.write(70);
   delay(300);
 
-  // Scan right (+15°)
-  servoLook.write(105);
+  // Scan right (+30°)
+  servoLook.write(120);
   delay(300);
   rightDist = getDistance();
 
@@ -207,7 +207,7 @@ void handleScanning() {
   leftDist = getDistance();
 
   // Return to center
-  servoLook.write(90);
+  servoLook.write(70);
   delay(300);
 
   Serial.print("Left distance: ");
@@ -219,11 +219,11 @@ void handleScanning() {
   // Choose direction
   if (rightDist > leftDist) {
     turnRight(450);
-    servoLook.write(90);
+    servoLook.write(70);
     moveForward();
   } else {
     turnLeft(450);
-    servoLook.write(90);
+    servoLook.write(70);
     moveForward();
   }
 }
@@ -253,7 +253,7 @@ void Reverse() {
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
   interrupts();
-  delay(600);
+  delay(1000);
   stopMove();
 }
 
