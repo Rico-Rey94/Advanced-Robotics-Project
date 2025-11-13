@@ -219,12 +219,15 @@ void handleScanning() {
   // Choose direction
   if (rightDist > leftDist) {
     turnRight(450);
-    servoLook.write(70);
-    moveForward();
+    delay(100);
+    stopMove();
+    servoLook.write(90);
+
   } else {
     turnLeft(450);
-    servoLook.write(70);
-    moveForward();
+    delay(100);
+    stopMove();
+    servoLook.write(90);
   }
 }
 
@@ -253,7 +256,7 @@ void Reverse() {
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
   interrupts();
-  delay(1000);
+  delay(100);
   stopMove();
 }
 
@@ -327,21 +330,33 @@ void speedCorrection() {
 // Ultrasonic Distance
 // ==========================
 int getDistance() {
-  long sum = 0;
+  const int MAX_DISTANCE_CM = 100; // ignore anything beyond this
+  const int MIN_DISTANCE_CM = 5;   // ignore fake close echoes
+  const int READINGS = 3;
+
+  long total = 0;
   int valid = 0;
-  for (int i = 0; i < 3; i++) {
+
+  for (int i = 0; i < READINGS; i++) {
     digitalWrite(TRIG_PIN, LOW);
     delayMicroseconds(2);
     digitalWrite(TRIG_PIN, HIGH);
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
-    unsigned long pulseTime = pulseIn(ECHO_PIN, HIGH, 15000);
-    if (pulseTime > 0) {
-      sum += pulseTime;
-      valid++;
+
+    // Short timeout = fewer false returns
+    unsigned long duration = pulseIn(ECHO_PIN, HIGH, 20000); // 20ms = ~3.4m
+    if (duration > 0) {
+      int cm = duration * 0.034 / 2;
+      if (cm >= MIN_DISTANCE_CM && cm <= MAX_DISTANCE_CM) {
+        total += cm;
+        valid++;
+      }
     }
+    delay(10);
   }
-  if (valid == 0) return 200;
-  int distance = (int)((sum / valid) * 0.034 / 2.0);
-  return distance;
+
+  if (valid == 0) return MAX_DISTANCE_CM;
+  return total / valid;
 }
+
