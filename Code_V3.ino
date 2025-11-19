@@ -218,17 +218,19 @@ void handleScanning() {
 
   // Choose direction
   if (rightDist > leftDist) {
-    turnRight(450);
-    delay(100);
+    turnRight(600);
+    //delay(100);
     stopMove();
     servoLook.write(90);
 
   } if(leftDist > rightDist) {
-    turnLeft(450);
-    delay(100);
+    turnLeft(600);
+    //delay(100);
     stopMove();
     servoLook.write(90);
-  } if(leftDist == rightDist){
+  } if(leftDist == rightDist && leftDist != 5){
+    turnLeft(600);
+  }else{
     Reverse();
     currentState = SCANNING;
   }
@@ -260,7 +262,7 @@ void Reverse() {
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
   interrupts();
-  delay(100);
+  delay(500);
   stopMove();
 }
 
@@ -334,7 +336,7 @@ void speedCorrection() {
 // Ultrasonic Distance
 // ==========================
 int getDistance() {
-  const int MAX_DISTANCE_CM = 100; // ignore anything beyond this
+  const int MAX_DISTANCE_CM = 50; // ignore anything beyond this
   const int MIN_DISTANCE_CM = 5;   // ignore fake close echoes
   const int READINGS = 3;
 
