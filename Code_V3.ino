@@ -275,10 +275,10 @@ void turnLeft(unsigned long duration) {
 }
 
 void turnRight(unsigned long duration) {
-  rightFront.run(BACKWARD);
-  rightBack.run(BACKWARD);
-  leftFront.run(RELEASE);
-  leftBack.run(RELEASE);
+  rightFront.run(RELEASE);
+  rightBack.run(RELEASE);
+  leftFront.run(FORWARD);
+  leftBack.run(FORWARD);
   motionStartTime = millis();
   motionDuration = duration;
   motionActive = true;
