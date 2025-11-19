@@ -223,12 +223,16 @@ void handleScanning() {
     stopMove();
     servoLook.write(90);
 
-  } else {
+  } if(leftDist > rightDist) {
     turnLeft(450);
     delay(100);
     stopMove();
     servoLook.write(90);
+  } if(leftDist == rightDist){
+    Reverse();
+    currentState = SCANNING;
   }
+
 }
 
 // ==========================
