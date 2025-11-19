@@ -141,6 +141,8 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  moveForward();
+
   if (motionActive && now - motionStartTime >= motionDuration) {
     stopMove();
     motionActive = false;
@@ -190,52 +192,47 @@ void handleScanning() {
   Serial.println("Scanning surroundings...");
   Reverse();
 
-  int rightDist = 0, leftDist = 0;
-
-  // Move servo to center first
-  servoLook.write(70);
+  servoLook.write(90);
   delay(300);
 
-  // Scan right (+30°)
+  // Look right
   servoLook.write(120);
   delay(300);
-  rightDist = getDistance();
+  int rightDist = getDistance();
 
-  // Scan left (-15° from center )
-  servoLook.write(-30); //test if negatives move counterclockwise
+  // Look left
+  servoLook.write(20);
   delay(300);
-  leftDist = getDistance();
+  int leftDist = getDistance();
 
   // Return to center
-  servoLook.write(70);
+  servoLook.write(90);
   delay(300);
 
-  Serial.print("Left distance: ");
-  Serial.print(leftDist);
-  Serial.print(" cm | Right distance: ");
-  Serial.print(rightDist);
-  Serial.println(" cm");
+  Serial.print("Left: "); Serial.print(leftDist);
+  Serial.print(" | Right: "); Serial.println(rightDist);
 
-  // Choose direction
+  // Decision Tree
   if (rightDist > leftDist) {
-    turnRight(600);
-    //delay(100);
-    stopMove();
-    servoLook.write(90);
-
-  } if(leftDist > rightDist) {
-    turnLeft(600);
-    //delay(100);
-    stopMove();
-    servoLook.write(90);
-  } if(leftDist == rightDist && leftDist != 5){
-    turnLeft(600);
-  }else{
-    Reverse();
-    currentState = SCANNING;
+    turnRight(480);
+    currentState = MOVING_FORWARD;
   }
-
+  else if (leftDist > rightDist) {
+    turnLeft(480);
+    currentState = MOVING_FORWARD;
+  }
+  else { // equal
+    if (leftDist == 0) {
+      turnLeft(480);
+      currentState = MOVING_FORWARD;
+    } else {
+      // both blocks very close
+      Reverse();
+      currentState = MOVING_FORWARD;
+    }
+  }
 }
+
 
 // ==========================
 // Motor Control
@@ -262,15 +259,15 @@ void Reverse() {
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
   interrupts();
-  delay(500);
+  delay(50);
   stopMove();
 }
 
 void turnLeft(unsigned long duration) {
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
-  leftFront.run(BACKWARD);
-  leftBack.run(BACKWARD);
+  leftFront.run(RELEASE);
+  leftBack.run(RELEASE);
   motionStartTime = millis();
   motionDuration = duration;
   motionActive = true;
@@ -280,8 +277,8 @@ void turnLeft(unsigned long duration) {
 void turnRight(unsigned long duration) {
   rightFront.run(BACKWARD);
   rightBack.run(BACKWARD);
-  leftFront.run(FORWARD);
-  leftBack.run(FORWARD);
+  leftFront.run(RELEASE);
+  leftBack.run(RELEASE);
   motionStartTime = millis();
   motionDuration = duration;
   motionActive = true;
@@ -336,7 +333,7 @@ void speedCorrection() {
 // Ultrasonic Distance
 // ==========================
 int getDistance() {
-  const int MAX_DISTANCE_CM = 50; // ignore anything beyond this
+  const int MAX_DISTANCE_CM = 18; // ignore anything beyond this
   const int MIN_DISTANCE_CM = 5;   // ignore fake close echoes
   const int READINGS = 3;
 
