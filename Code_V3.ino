@@ -1,243 +1,98 @@
 #include <AFMotor.h>
 #include <Servo.h>
 
-// ==========================
-// Motor Objects (Adafruit L293D Shield)
-// ==========================
-AF_DCMotor rightFront(1); // M1
-AF_DCMotor rightBack(2);  // M2
-AF_DCMotor leftBack(3);   // M3
-AF_DCMotor leftFront(4);  // M4
+// ---------------- Motors ----------------
+AF_DCMotor rightFront(1);
+AF_DCMotor rightBack(2);
+AF_DCMotor leftBack(3);
+AF_DCMotor leftFront(4);
 
-// ==========================
-// Encoder Pins (Hardware Interrupts)
-// ==========================
-#define ENC1_A 18 // INT5
-#define ENC1_B 40
-#define ENC2_A 19 // INT4
-#define ENC2_B 44
-#define ENC3_A 20 // INT3
-#define ENC3_B 28
-#define ENC4_A 21 // INT2
-#define ENC4_B 22
-
-volatile long encoderCount[4] = {0, 0, 0, 0};
-
-// ==========================
-// Servo + Ultrasonic Sensor
-// ==========================
-#define SERVO_PIN 23 // servo signal
+// ---------------- Ultrasonic + Servo ----------------
+#define SERVO_PIN 23
 #define TRIG_PIN 35
 #define ECHO_PIN 37
-// #define OBSTACLE_PIN 51 // VM330 output, unused
-
 Servo servoLook;
-// volatile bool obstacleDetected = false;  // no longer used
 
-// ==========================
-// Motion Variables
-// ==========================
-int motorSpeed = 140;
-int motorOffset = 10;
+// ---------------- Settings ----------------
+int motorSpeed = 150;
+int motorOffset = 6;          // forward straighten
+int reverseOffset = 10;       // NEW – reverse straighten
 
-// ==========================
-// Speed Control Variables
-// ==========================
-unsigned long lastSpeedCheck = 0;
-const unsigned long speedCheckInterval = 100; // ms
-long prevEncoderCount[4] = {0, 0, 0, 0};
-float wheelSpeed[4] = {0, 0, 0, 0}; // ticks/sec
+enum State { MOVING_FORWARD, OBSTACLE_DETECTED, SCANNING, TURNING };
+State currentState = MOVING_FORWARD;
 
-float targetSpeed = 500.0; // nominal ticks/sec
-float Kp = 0.05;           // proportional gain
-
-// ==========================
-// Navigation State
-// ==========================
-enum NavigationState {
-  MOVING_FORWARD,
-  OBSTACLE_DETECTED,
-  SCANNING,
-  TURNING,
-  REACHED_TARGET
-};
-NavigationState currentState = MOVING_FORWARD;
-
-// ==========================
-// Timing for Turns
-// ==========================
 unsigned long motionStartTime = 0;
 unsigned long motionDuration = 0;
 bool motionActive = false;
 
-// ==========================
-// Encoder ISRs (A channel only)
-// ==========================
-void encoder1A_ISR() {
-  bool b = digitalRead(ENC1_B);
-  encoderCount[0] += b ? 1 : -1;
-}
-void encoder2A_ISR() {
-  bool b = digitalRead(ENC2_B);
-  encoderCount[1] += b ? 1 : -1;
-}
-void encoder3A_ISR() {
-  bool b = digitalRead(ENC3_B);
-  encoderCount[2] += b ? 1 : -1;
-}
-void encoder4A_ISR() {
-  bool b = digitalRead(ENC4_B);
-  encoderCount[3] += b ? 1 : -1;
-}
-
-// ==========================
-// Setup
-// ==========================
+// ---------------- Setup ----------------
 void setup() {
   Serial.begin(9600);
-  Serial.println("Initializing robot...");
+  Serial.println("Robot booting...");
 
-  // Servo setup
   servoLook.attach(SERVO_PIN);
-  servoLook.write(70); // Center position, offset due to extra weight
+  servoLook.write(90);
 
-  // Motor setup
   rightBack.setSpeed(motorSpeed);
   rightFront.setSpeed(motorSpeed);
-  leftFront.setSpeed(motorSpeed + motorOffset);
-  leftBack.setSpeed(motorSpeed + motorOffset);
-  stopMove();
+  leftFront.setSpeed(motorSpeed);
+  leftBack.setSpeed(motorSpeed);
 
-  // Ultrasonic sensor
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
 
-  // Encoder pins
-  pinMode(ENC1_A, INPUT_PULLUP);
-  pinMode(ENC1_B, INPUT_PULLUP);
-  pinMode(ENC2_A, INPUT_PULLUP);
-  pinMode(ENC2_B, INPUT_PULLUP);
-  pinMode(ENC3_A, INPUT_PULLUP);
-  pinMode(ENC3_B, INPUT_PULLUP);
-  pinMode(ENC4_A, INPUT_PULLUP);
-  pinMode(ENC4_B, INPUT_PULLUP);
-
-  // Attach hardware interrupts (Mega: 2–5, pins 18 - 21)
-  attachInterrupt(digitalPinToInterrupt(ENC1_A), encoder1A_ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC2_A), encoder2A_ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC3_A), encoder3A_ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC4_A), encoder4A_ISR, CHANGE);
-
-  // Obstacle sensor (VMA330) removed
-  // pinMode(OBSTACLE_PIN, INPUT);
-  
-  delay(10);
-  Serial.println("Robot initialized. Starting navigation...");
+  stopMove();
+  Serial.println("Ready.");
 }
 
-// ==========================
-// Main Loop
-// ==========================
+// ---------------- Main Loop ----------------
 void loop() {
-  unsigned long now = millis();
 
-  moveForward();
-
-  if (motionActive && now - motionStartTime >= motionDuration) {
+  if (motionActive && millis() - motionStartTime >= motionDuration) {
     stopMove();
     motionActive = false;
     currentState = MOVING_FORWARD;
   }
 
-  speedCorrection();
-
   switch (currentState) {
-    case MOVING_FORWARD:
-      handleForwardMovement();
+
+    case MOVING_FORWARD: {
+      moveForward();
+      int front = getDistance();
+
+      if (front > 0 && front < 35) {
+        Serial.print("Obstacle detected at ");
+        Serial.print(front);
+        Serial.println(" cm");
+        stopMove();
+        currentState = OBSTACLE_DETECTED;
+      }
       break;
-    case OBSTACLE_DETECTED:
-      handleObstacleDetection();
+    }
+
+    case OBSTACLE_DETECTED: {
+      Reverse();
+      currentState = SCANNING;
       break;
-    case SCANNING:
+    }
+
+    case SCANNING: {
       handleScanning();
       break;
+    }
+
     case TURNING:
       break;
-    case REACHED_TARGET:
-      stopMove();
-      break;
   }
 }
 
-// ==========================
-// Motion + Logic
-// ==========================
-void handleForwardMovement() {
-  int frontDistance = getDistance();
-  if (frontDistance < 20) {
-    stopMove();
-    currentState = OBSTACLE_DETECTED;
-  } else {
-    moveForward();
-  }
-}
-
-void handleObstacleDetection() {
-  stopMove();
-  Serial.println("Handling Obstacle...");
-  currentState = SCANNING;
-}
-
-void handleScanning() {
-  Serial.println("Scanning surroundings...");
-  Reverse();
-
-  servoLook.write(90);
-  delay(300);
-
-  // Look right
-  servoLook.write(120);
-  delay(300);
-  int rightDist = getDistance();
-
-  // Look left
-  servoLook.write(20);
-  delay(300);
-  int leftDist = getDistance();
-
-  // Return to center
-  servoLook.write(90);
-  delay(300);
-
-  Serial.print("Left: "); Serial.print(leftDist);
-  Serial.print(" | Right: "); Serial.println(rightDist);
-
-  // Decision Tree
-  if (rightDist > leftDist) {
-    turnRight(480);
-    currentState = MOVING_FORWARD;
-  }
-  else if (leftDist > rightDist) {
-    turnLeft(480);
-    currentState = MOVING_FORWARD;
-  }
-  else { // equal
-    if (leftDist == 0) {
-      turnLeft(480);
-      currentState = MOVING_FORWARD;
-    } else {
-      // both blocks very close
-      Reverse();
-      currentState = MOVING_FORWARD;
-    }
-  }
-}
-
-
-// ==========================
-// Motor Control
-// ==========================
+// ---------------- Movement ----------------
 void moveForward() {
+  rightFront.setSpeed(motorSpeed - motorOffset);
+  rightBack.setSpeed(motorSpeed - motorOffset);
+  leftFront.setSpeed(motorSpeed + motorOffset);
+  leftBack.setSpeed(motorSpeed + motorOffset);
+
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
   leftFront.run(FORWARD);
@@ -252,22 +107,28 @@ void stopMove() {
 }
 
 void Reverse() {
-  Serial.println("Reversing...");
-  noInterrupts();
+  // FIX: balanced reverse
+  rightFront.setSpeed(motorSpeed - reverseOffset);
+  rightBack.setSpeed(motorSpeed - reverseOffset);
+  leftFront.setSpeed(motorSpeed + reverseOffset);
+  leftBack.setSpeed(motorSpeed + reverseOffset);
+
   rightFront.run(BACKWARD);
   rightBack.run(BACKWARD);
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
-  interrupts();
-  delay(50);
+
+  delay(450);   // short controlled reverse
   stopMove();
 }
 
+// ---------------- Turning ----------------
 void turnLeft(unsigned long duration) {
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
-  leftFront.run(RELEASE);
-  leftBack.run(RELEASE);
+  leftFront.run(BACKWARD);
+  leftBack.run(BACKWARD);
+
   motionStartTime = millis();
   motionDuration = duration;
   motionActive = true;
@@ -275,91 +136,87 @@ void turnLeft(unsigned long duration) {
 }
 
 void turnRight(unsigned long duration) {
-  rightFront.run(RELEASE);
-  rightBack.run(RELEASE);
+  rightFront.run(BACKWARD);
+  rightBack.run(BACKWARD);
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
+
   motionStartTime = millis();
   motionDuration = duration;
   motionActive = true;
   currentState = TURNING;
 }
 
-// ==========================
-// Speed Feedback + Correction
-// ==========================
-void updateWheelSpeeds() {
-  unsigned long now = millis();
-  if (now - lastSpeedCheck < speedCheckInterval) return;
-  lastSpeedCheck = now;
+// ---------------- SCANNING ----------------
+void handleScanning() {
+  stopMove();
 
-  noInterrupts();
-  long currentCount[4];
-  for (int i = 0; i < 4; i++) currentCount[i] = encoderCount[i];
-  interrupts();
+  servoLook.write(90);
+  delay(250);
 
-  for (int i = 0; i < 4; i++) {
-    wheelSpeed[i] = (currentCount[i] - prevEncoderCount[i]) * (1000.0 / speedCheckInterval);
-    prevEncoderCount[i] = currentCount[i];
+  // Scan RIGHT
+  servoLook.write(150);
+  delay(250);
+  int rightDist = getDistance();
+
+  // Scan LEFT
+  servoLook.write(30);
+  delay(250);
+  int leftDist = getDistance();
+
+  // Return servo to center
+  servoLook.write(90);
+  delay(200);
+
+  Serial.print("Left = ");
+  Serial.print(leftDist);
+  Serial.print(" | Right = ");
+  Serial.println(rightDist);
+
+  // ---------- DECISION LOGIC ----------
+  if (rightDist < leftDist) {
+    Serial.println("Turning LEFT");
+    turnLeft(900);
+    return;
   }
 
-  Serial.print("Speeds: ");
-  for (int i = 0; i < 4; i++) {
-    Serial.print(wheelSpeed[i]); Serial.print(" ");
+  else if (rightDist > leftDist) {
+    Serial.println("Turning RIGHT");
+    turnRight(900);
+    return;
   }
-  Serial.println();
+  else if (rightDist == leftDist && leftDist != 999){
+    Serial.println("Distances equal -> reversing");
+    Reverse();
+    currentState = MOVING_FORWARD;
+  }
+  else{
+    //equal but clear
+    Serial.println("Both sides clear, turning left.")
+    turnLeft(900);
+    return;
+  }
+  
 }
 
-void speedCorrection() {
-  updateWheelSpeeds();
 
-  float rightAvg = (wheelSpeed[0] + wheelSpeed[1]) / 2.0;
-  float leftAvg  = (wheelSpeed[2] + wheelSpeed[3]) / 2.0;
-  float error = leftAvg - rightAvg;
-
-  int rightAdj = motorSpeed + Kp * error;
-  int leftAdj  = motorSpeed - Kp * error;
-
-  rightAdj = constrain(rightAdj, 0, 255);
-  leftAdj  = constrain(leftAdj, 0, 255);
-
-  rightFront.setSpeed(rightAdj);
-  rightBack.setSpeed(rightAdj);
-  leftFront.setSpeed(leftAdj);
-  leftBack.setSpeed(leftAdj);
-}
-
-// ==========================
-// Ultrasonic Distance
-// ==========================
+// ---------------- Ultrasonic ----------------
 int getDistance() {
-  const int MAX_DISTANCE_CM = 18; // ignore anything beyond this
-  const int MIN_DISTANCE_CM = 5;   // ignore fake close echoes
-  const int READINGS = 3;
+  long duration;
 
-  long total = 0;
-  int valid = 0;
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
 
-  for (int i = 0; i < READINGS; i++) {
-    digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(TRIG_PIN, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(TRIG_PIN, LOW);
+  duration = pulseIn(ECHO_PIN, HIGH, 35000);
+  if (duration == 0) return 999;
 
-    // Short timeout = fewer false returns
-    unsigned long duration = pulseIn(ECHO_PIN, HIGH, 20000); // 20ms = ~3.4m
-    if (duration > 0) {
-      int cm = duration * 0.034 / 2;
-      if (cm >= MIN_DISTANCE_CM && cm <= MAX_DISTANCE_CM) {
-        total += cm;
-        valid++;
-      }
-    }
-    delay(10);
-  }
+  int cm = duration * 0.034 / 2;
 
-  if (valid == 0) return MAX_DISTANCE_CM;
-  return total / valid;
+  // Accept only 2–80 cm
+  if (cm < 2 || cm > 80) return 999;
+
+  return cm;
 }
-
