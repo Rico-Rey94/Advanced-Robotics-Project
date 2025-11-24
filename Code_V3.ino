@@ -90,6 +90,7 @@ void loop() {
 
 // ---------------- Movement ----------------
 void moveForward() {
+  Serial.println("Moving forward");
   rightFront.setSpeed(motorSpeed - motorOffset);
   rightBack.setSpeed(motorSpeed - motorOffset);
   leftFront.setSpeed(motorSpeed + motorOffset);
@@ -102,6 +103,7 @@ void moveForward() {
 }
 
 void stopMove() {
+  Serial.println("Stop");
   rightFront.run(RELEASE);
   rightBack.run(RELEASE);
   leftFront.run(RELEASE);
@@ -110,6 +112,7 @@ void stopMove() {
 
 void Reverse() {
   // balanced reverse
+  Serial.println("Reversing");
   rightFront.setSpeed(motorSpeed - reverseOffset);
   rightBack.setSpeed(motorSpeed - reverseOffset);
   leftFront.setSpeed(motorSpeed + reverseOffset);
@@ -157,13 +160,13 @@ void handleScanning() {
   delay(250);
 
   // Scan RIGHT
-  servoLook.write(150);
-  delay(250);
+  servoLook.write(160);
+  delay(400);
   int rightDist = getDistance();
 
   // Scan LEFT
-  servoLook.write(30);
-  delay(250);
+  servoLook.write(20);
+  delay(400);
   int leftDist = getDistance();
 
   // Return servo to center
@@ -178,13 +181,13 @@ void handleScanning() {
   // ---------- DECISION LOGIC ----------
   if (rightDist < leftDist) {
     Serial.println("Turning LEFT");
-    turnLeft(900);
+    turnLeft(480);
     return;
   }
 
   if (rightDist > leftDist) {
     Serial.println("Turning RIGHT");
-    turnRight(900);
+    turnRight(480);
     return;
   }
 
