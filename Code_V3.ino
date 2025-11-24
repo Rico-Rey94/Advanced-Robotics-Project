@@ -2,10 +2,10 @@
 #include <Servo.h>
 
 // ---------------- Motors ----------------
-AF_DCMotor rightFront(1);
-AF_DCMotor rightBack(2);
-AF_DCMotor leftBack(3);
-AF_DCMotor leftFront(4);
+AF_DCMotor rightFront(4);
+AF_DCMotor rightBack(3);
+AF_DCMotor leftBack(2);
+AF_DCMotor leftFront(1);
 
 // ---------------- Ultrasonic + Servo ----------------
 #define SERVO_PIN 23
@@ -14,9 +14,9 @@ AF_DCMotor leftFront(4);
 Servo servoLook;
 
 // ---------------- Settings ----------------
-int motorSpeed = 150;
-int motorOffset = 6;          // forward straightening
-int reverseOffset = 10;       // reverse straightening
+int motorSpeed = 200;
+int motorOffset = 10;          // forward straightening
+int reverseOffset = 45;       // reverse straightening
 
 enum State { MOVING_FORWARD, OBSTACLE_DETECTED, SCANNING, TURNING };
 State currentState = MOVING_FORWARD;
@@ -61,7 +61,7 @@ void loop() {
       moveForward();
       int front = getDistance();
 
-      if (front > 0 && front < 35) {
+      if (front > 0 && front < 15) {
         Serial.print("Obstacle detected at ");
         Serial.print(front);
         Serial.println(" cm");
@@ -91,10 +91,10 @@ void loop() {
 // ---------------- Movement ----------------
 void moveForward() {
   Serial.println("Moving forward");
-  rightFront.setSpeed(motorSpeed - motorOffset);
-  rightBack.setSpeed(motorSpeed - motorOffset);
-  leftFront.setSpeed(motorSpeed + motorOffset);
-  leftBack.setSpeed(motorSpeed + motorOffset);
+  rightFront.setSpeed(motorSpeed + motorOffset);
+  rightBack.setSpeed(motorSpeed + motorOffset);
+  leftFront.setSpeed(motorSpeed);
+  leftBack.setSpeed(motorSpeed);
 
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
@@ -113,8 +113,8 @@ void stopMove() {
 void Reverse() {
   // balanced reverse
   Serial.println("Reversing");
-  rightFront.setSpeed(motorSpeed - reverseOffset);
-  rightBack.setSpeed(motorSpeed - reverseOffset);
+  rightFront.setSpeed(motorSpeed);
+  rightBack.setSpeed(motorSpeed);
   leftFront.setSpeed(motorSpeed + reverseOffset);
   leftBack.setSpeed(motorSpeed + reverseOffset);
 
@@ -123,7 +123,7 @@ void Reverse() {
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
 
-  delay(450);   // short controlled reverse
+  delay(750);   // short controlled reverse
   stopMove();
 }
 
@@ -131,8 +131,8 @@ void Reverse() {
 void turnLeft(unsigned long duration) {
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
-  leftFront.run(BACKWARD);
-  leftBack.run(BACKWARD);
+  leftFront.run(RELEASE);
+  leftBack.run(RELEASE);
 
   motionStartTime = millis();
   motionDuration = duration;
@@ -141,8 +141,8 @@ void turnLeft(unsigned long duration) {
 }
 
 void turnRight(unsigned long duration) {
-  rightFront.run(BACKWARD);
-  rightBack.run(BACKWARD);
+  rightFront.run(RELEASE);
+  rightBack.run(RELEASE);
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
 
@@ -162,12 +162,12 @@ void handleScanning() {
   // Scan RIGHT
   servoLook.write(160);
   delay(400);
-  int rightDist = getDistance();
+  int leftDist = getDistance();
 
   // Scan LEFT
   servoLook.write(20);
   delay(400);
-  int leftDist = getDistance();
+  int rightDist = getDistance();
 
   // Return servo to center
   servoLook.write(90);
@@ -181,13 +181,13 @@ void handleScanning() {
   // ---------- DECISION LOGIC ----------
   if (rightDist < leftDist) {
     Serial.println("Turning LEFT");
-    turnLeft(480);
+    turnLeft(2250);
     return;
   }
 
   if (rightDist > leftDist) {
     Serial.println("Turning RIGHT");
-    turnRight(480);
+    turnRight(2250);
     return;
   }
 
@@ -201,7 +201,7 @@ void handleScanning() {
 
   // Both 999 → wide open space
   Serial.println("Both sides clear, turning left.");
-  turnLeft(900);
+  turnLeft(2250);
 }
 
 // ---------------- Ultrasonic ----------------
