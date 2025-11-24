@@ -15,8 +15,8 @@ Servo servoLook;
 
 // ---------------- Settings ----------------
 int motorSpeed = 150;
-int motorOffset = 6;          // forward straighten
-int reverseOffset = 10;       // NEW – reverse straighten
+int motorOffset = 6;          // forward straightening
+int reverseOffset = 10;       // reverse straightening
 
 enum State { MOVING_FORWARD, OBSTACLE_DETECTED, SCANNING, TURNING };
 State currentState = MOVING_FORWARD;
@@ -48,6 +48,7 @@ void setup() {
 // ---------------- Main Loop ----------------
 void loop() {
 
+  // ---------- TURN EXIT HANDLER ----------
   if (motionActive && millis() - motionStartTime >= motionDuration) {
     stopMove();
     motionActive = false;
@@ -82,6 +83,7 @@ void loop() {
     }
 
     case TURNING:
+      // Motion handled by timing above
       break;
   }
 }
@@ -107,7 +109,7 @@ void stopMove() {
 }
 
 void Reverse() {
-  // FIX: balanced reverse
+  // balanced reverse
   rightFront.setSpeed(motorSpeed - reverseOffset);
   rightBack.setSpeed(motorSpeed - reverseOffset);
   leftFront.setSpeed(motorSpeed + reverseOffset);
@@ -180,43 +182,48 @@ void handleScanning() {
     return;
   }
 
-  else if (rightDist > leftDist) {
+  if (rightDist > leftDist) {
     Serial.println("Turning RIGHT");
     turnRight(900);
     return;
   }
-  else if (rightDist == leftDist && leftDist != 999){
+
+  // Equal distances but not 999 (both detect obstacle)
+  if (rightDist == leftDist && leftDist != 999) {
     Serial.println("Distances equal -> reversing");
     Reverse();
     currentState = MOVING_FORWARD;
-  }
-  else{
-    //equal but clear
-    Serial.println("Both sides clear, turning left.")
-    turnLeft(900);
     return;
   }
-  
+
+  // Both 999 → wide open space
+  Serial.println("Both sides clear, turning left.");
+  turnLeft(900);
 }
 
-
 // ---------------- Ultrasonic ----------------
+// Small averaging filter to stabilize readings
 int getDistance() {
-  long duration;
+  long durationSum = 0;
+  int samples = 3;
 
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
+  for (int i = 0; i < samples; i++) {
+    digitalWrite(TRIG_PIN, LOW);
+    delayMicroseconds(2);
+    digitalWrite(TRIG_PIN, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(TRIG_PIN, LOW);
 
-  duration = pulseIn(ECHO_PIN, HIGH, 35000);
-  if (duration == 0) return 999;
+    long duration = pulseIn(ECHO_PIN, HIGH, 35000);
+    if (duration == 0) duration = 60000; // treat as far away
 
+    durationSum += duration;
+    delay(10);
+  }
+
+  long duration = durationSum / samples;
   int cm = duration * 0.034 / 2;
 
-  // Accept only 2–80 cm
   if (cm < 2 || cm > 80) return 999;
-
   return cm;
 }
