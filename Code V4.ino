@@ -133,7 +133,7 @@ void handleForwardMovement() {
   moveForward();
 
   int front = getDistance();
-  if (front < 35) {
+  if (front < 15) {
     Serial.print("Object detected at ");
     Serial.print(front);
     Serial.println(" cm");
