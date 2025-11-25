@@ -28,6 +28,7 @@ Servo servoLook;
 // ---------------- Movement settings ----------------
 int motorSpeed = 150;
 int motorOffset = 6;
+int reverseOffset = 30;
 
 float Kp = 0.05;
 
@@ -103,7 +104,7 @@ void loop() {
   if (motionActive && now - motionStartTime >= motionDuration) {
     stopMove();
     motionActive = false;
-    turnCooldownUntil = millis() + 400;  // ignore false triggers
+    turnCooldownUntil = millis();  
     currentState = MOVING_FORWARD;
   }
 
@@ -150,34 +151,54 @@ void handleObstacleDetection() {
 void handleScanning() {
   stopMove();
 
-  // look right
-  servoLook.write(150);
-  delay(2500);
-  int rightDist = getDistance();
+  servoLook.write(90);
+  delay(250);
 
-  // look left
-  servoLook.write(30);
-  delay(2500);
+  // Scan RIGHT
+  servoLook.write(160);
+  delay(400);
   int leftDist = getDistance();
 
-  // center again
-  servoLook.write(90);
-  delay(2000);
+  // Scan LEFT
+  servoLook.write(20);
+  delay(400);
+  int rightDist = getDistance();
 
-  Serial.print("Scan -> R: ");
-  Serial.print(rightDist);
-  Serial.print("  L: ");
-  Serial.println(leftDist);
+  // Return servo to center
+  servoLook.write(90);
+  delay(200);
+
+  Serial.print("Left = ");
+  Serial.print(leftDist);
+  Serial.print(" | Right = ");
+  Serial.println(rightDist);
+
+  // ---------- DECISION LOGIC ----------
+  if (rightDist < leftDist) {
+    Serial.println("Turning LEFT");
+    turnLeft(2500);
+    return;
+  }
 
   if (rightDist > leftDist) {
-    turnRight(1000);
-  } else if (leftDist > rightDist) {
-    turnLeft(1000);
-  } else {
+    Serial.println("Turning RIGHT");
+    turnRight(2500);
+    return;
+  }
+
+  // Equal distances but not 999 (both detect obstacle)
+  if (rightDist == leftDist && leftDist != 999) {
+    Serial.println("Distances equal -> reversing");
     Reverse();
     currentState = MOVING_FORWARD;
+    return;
   }
+
+  // Both 999 → wide open space
+  Serial.println("Both sides clear, turning left.");
+  turnLeft(2500);
 }
+
 
 // ---------------- Motor Controls ----------------
 void moveForward() {
@@ -195,10 +216,10 @@ void stopMove() {
 }
 
 void Reverse() {
-  rightFront.setSpeed(motorSpeed + 30);
-  rightBack.setSpeed(motorSpeed + 30);
-  leftFront.setSpeed(motorSpeed + 30);
-  leftBack.setSpeed(motorSpeed + 30);
+  rightFront.setSpeed(motorSpeed - reverseOffset);
+  rightBack.setSpeed(motorSpeed - reverseOffset);
+  leftFront.setSpeed(motorSpeed + reverseOffset);
+  leftBack.setSpeed(motorSpeed + reverseOffset);
 
   rightFront.run(BACKWARD);
   rightBack.run(BACKWARD);
