@@ -14,9 +14,9 @@ AF_DCMotor leftFront(1);
 Servo servoLook;
 
 // ---------------- Settings ----------------
-int motorSpeed = 200;
-int motorOffset = 10;          // forward straightening
-int reverseOffset = 45;       // reverse straightening
+int motorSpeed = 150;
+int motorOffset = 6;          // forward straightening
+int reverseOffset = 30;       // reverse straightening
 
 enum State { MOVING_FORWARD, OBSTACLE_DETECTED, SCANNING, TURNING };
 State currentState = MOVING_FORWARD;
