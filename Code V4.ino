@@ -2,10 +2,10 @@
 #include <Servo.h>
 
 // ---------------- Motors ----------------
-AF_DCMotor rightFront(1);
-AF_DCMotor rightBack(2);
-AF_DCMotor leftBack(3);
-AF_DCMotor leftFront(4);
+AF_DCMotor rightFront(4);
+AF_DCMotor rightBack(3);
+AF_DCMotor leftBack(2);
+AF_DCMotor leftFront(1);
 
 // ---------------- Encoders ----------------
 #define ENC1_A 18
