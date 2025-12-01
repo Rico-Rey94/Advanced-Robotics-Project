@@ -5,7 +5,7 @@
 AF_DCMotor rightFront(4);
 AF_DCMotor rightBack(3);
 AF_DCMotor leftBack(2);
-AF_DCMotor leftFront(1);
+AF_DCMotor leftFront(2);
 
 // ---------------- Ultrasonic + Servo ----------------
 #define SERVO_PIN 23
