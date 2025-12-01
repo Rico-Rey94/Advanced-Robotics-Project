@@ -8,6 +8,7 @@ AF_DCMotor leftFront(1);
 
 int speed = 150;
 int offset = 6;
+int reverseOffset = 55;
 
 // =========================
 // BASIC MOVEMENT FUNCTIONS
@@ -16,8 +17,8 @@ int offset = 6;
 void moveForward(unsigned long t) {
   leftFront.setSpeed(speed);
   leftBack.setSpeed(speed);
-  rightFront.setSpeed(speed);
-  rightBack.setSpeed(speed);
+  rightFront.setSpeed(speed + offset);
+  rightBack.setSpeed(speed + offset);
 
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
@@ -29,10 +30,10 @@ void moveForward(unsigned long t) {
 }
 
 void moveBackward() {
-  leftFront.setSpeed(speed + 55);
-  leftBack.setSpeed(speed + 55);
-  rightFront.setSpeed(speed);
-  rightBack.setSpeed(speed);
+  leftFront.setSpeed(speed);
+  leftBack.setSpeed(speed);
+  rightFront.setSpeed(speed - reverseOffset);
+  rightBack.setSpeed(speed - reverseOffset);
 
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
