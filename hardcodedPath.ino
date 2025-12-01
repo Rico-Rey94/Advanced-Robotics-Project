@@ -6,17 +6,18 @@ AF_DCMotor rightBack(3);
 AF_DCMotor leftBack(2);
 AF_DCMotor leftFront(1);
 
-int spd = 150;
+int speed = 150;
+int offset = 6;
 
 // =========================
 // BASIC MOVEMENT FUNCTIONS
 // =========================
 
 void moveForward(unsigned long t) {
-  leftFront.setSpeed(spd);
-  leftBack.setSpeed(spd);
-  rightFront.setSpeed(spd);
-  rightBack.setSpeed(spd);
+  leftFront.setSpeed(speed);
+  leftBack.setSpeed(speed);
+  rightFront.setSpeed(speed);
+  rightBack.setSpeed(speed);
 
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
@@ -27,18 +28,18 @@ void moveForward(unsigned long t) {
   stopMove();
 }
 
-void moveBackward(unsigned long t) {
-  leftFront.setSpeed(spd);
-  leftBack.setSpeed(spd);
-  rightFront.setSpeed(spd);
-  rightBack.setSpeed(spd);
+void moveBackward() {
+  leftFront.setSpeed(speed + 55);
+  leftBack.setSpeed(speed + 55);
+  rightFront.setSpeed(speed);
+  rightBack.setSpeed(speed);
 
   leftFront.run(BACKWARD);
   leftBack.run(BACKWARD);
   rightFront.run(BACKWARD);
   rightBack.run(BACKWARD);
 
-  delay(t);
+  delay(3500);
   stopMove();
 }
 
@@ -54,11 +55,11 @@ void stopMove() {
 // PIVOT TURNS
 // =========================
 
-void turnLeftPivot(unsigned long t) {
-  leftFront.setSpeed(spd);
-  leftBack.setSpeed(spd);
-  rightFront.setSpeed(spd);
-  rightBack.setSpeed(spd);
+void turnLeft() {
+  leftFront.setSpeed(speed + 50);
+  leftBack.setSpeed(speed + 50);
+  rightFront.setSpeed(speed + 50);
+  rightBack.setSpeed(speed + 50);
 
   // left wheels backward, right wheels forward
   leftFront.run(BACKWARD);
@@ -66,15 +67,15 @@ void turnLeftPivot(unsigned long t) {
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
 
-  delay(t);
+  delay(2150);
   stopMove();
 }
 
-void turnRightPivot(unsigned long t) {
-  leftFront.setSpeed(spd);
-  leftBack.setSpeed(spd);
-  rightFront.setSpeed(spd);
-  rightBack.setSpeed(spd);
+void turnRight() {
+  leftFront.setSpeed(speed + 50);
+  leftBack.setSpeed(speed + 50);
+  rightFront.setSpeed(speed + 50);
+  rightBack.setSpeed(speed + 50);
 
   // right wheels backward, left wheels forward
   rightFront.run(BACKWARD);
@@ -82,7 +83,7 @@ void turnRightPivot(unsigned long t) {
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
 
-  delay(t);
+  delay(2150);
   stopMove();
 }
 
@@ -92,39 +93,32 @@ void turnRightPivot(unsigned long t) {
 
 void followPath() {
 
-  // ==== Tune These Delays For Your Robot ====
-  unsigned long long_forward1 = 4000;
-  unsigned long up1 = 3500;
-  unsigned long right1 = 3000;
-  unsigned long up2 = 3500;
-  unsigned long right2 = 2500;
-
   // 1) Move right along bottom
-  moveForward(long_forward1);
+  moveForward(1000);
 
-  // 2) Turn UP
-  turnLeftPivot(500);
+  // 2) Turn Right
+  turnRight();
 
   // 3) Move UP
-  moveForward(up1);
+  //moveForward(5000);
 
-  // 4) Turn RIGHT
-  turnRightPivot(500);
+  // 4) Turn Left
+  //turnLeft();
 
   // 5) Move RIGHT (middle section)
-  moveForward(right1);
+  //moveForward(1000);
 
   // 6) Turn UP
-  turnLeftPivot(500);
+  //turnLeft();
 
   // 7) Move UP (final section)
-  moveForward(up2);
+  //moveForward(200);
 
   // 8) Turn RIGHT (toward target)
-  turnRightPivot(500);
+  //turnRight();
 
   // 9) Final approach to target
-  moveForward(right2);
+  //moveForward(200);
 
   stopMove();
 }
