@@ -101,25 +101,55 @@ void followPath() {
   turnRight();
 
   // 3) Move UP
-  //moveForward(5000);
+  //moveForward(4200);
 
   // 4) Turn Left
   //turnLeft();
 
-  // 5) Move RIGHT (middle section)
-  //moveForward(1000);
+  // 5) Forward
+  //moveForward(2000);
 
-  // 6) Turn UP
+  // 6) Turn Left
   //turnLeft();
 
-  // 7) Move UP (final section)
-  //moveForward(200);
+  // 7) Foward
+  //moveForward(3000);
 
-  // 8) Turn RIGHT (toward target)
+  // 8) Turn RIGHT
   //turnRight();
 
-  // 9) Final approach to target
-  //moveForward(200);
+  // 9) Foward
+  //moveForward(3000);
+
+  // 10) Turn Right
+  //turnRight();
+
+  // 11) Foward
+  //moveForward(2000);
+
+  // 12) Turn Right
+  //turnRight();
+
+  // 13) Foward
+  //moveForward(1000);
+
+  // 14) Turn Left
+  //turnLeft();
+
+  // 15) Foward
+  //moveForward(2000);
+
+  // 16) Turn Right
+  //turnRight();
+
+  // 17) Foward
+  //moveForward(2000);
+
+  // 18) Turn Left
+  //turnLeft();
+
+  // 20) Foward
+  //moveForward(2500);
 
   stopMove();
 }
