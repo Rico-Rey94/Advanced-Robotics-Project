@@ -46,7 +46,7 @@ int reverseOffset = 55;
 
 // *** ENCODER TURNING VALUE ***
 // Adjust after testing
-const long TURN_90_TICKS = 420;
+const long TURN_90_TICKS = 20;
 
 // ============================================================
 // STATE MACHINE
@@ -106,8 +106,9 @@ void loop() {
     case MOVING_FORWARD: {
       moveForward();
       int front = getDistance();
-
       if (front > 0 && front < 18) {
+        Serial.println("object detected: ");
+        Serial.println(front);
         stopMove();
         currentState = OBSTACLE_DETECTED;
       }
@@ -132,6 +133,7 @@ void loop() {
 // BASIC MOVEMENT
 // ============================================================
 void moveForward() {
+  Serial.println("moving foward");
   rightFront.setSpeed(motorSpeed + motorOffset);
   rightBack.setSpeed(motorSpeed + motorOffset);
   leftFront.setSpeed(motorSpeed);
@@ -144,6 +146,7 @@ void moveForward() {
 }
 
 void stopMove() {
+  Serial.println("stop");
   rightFront.run(RELEASE);
   rightBack.run(RELEASE);
   leftFront.run(RELEASE);
@@ -151,6 +154,7 @@ void stopMove() {
 }
 
 void Reverse() {
+  Serial.println("reverse");
   rightFront.setSpeed(motorSpeed - reverseOffset);
   rightBack.setSpeed(motorSpeed - reverseOffset);
   leftFront.setSpeed(motorSpeed);
@@ -168,53 +172,71 @@ void Reverse() {
 // ============================================================
 // *** ENCODER TURNING ***
 // ============================================================
+
 void turnLeft_Encoder() {
   turningLeft = true;
-  turnStartLeftTicks = encoderCount[2];
-  turnStartRightTicks = encoderCount[0];
+  Serial.println("TURN LEFT");
 
-  // Right wheels forward, left wheels stop
-  rightFront.setSpeed(motorSpeed + 50);
-  rightBack.setSpeed(motorSpeed + 50);
+  // Record starting ticks
+  turnStartLeftTicks  = encoderCount[2];  // Left wheel
+  turnStartRightTicks = encoderCount[0];  // Right wheel
+
+  // Right wheels forward
+  rightFront.setSpeed(motorSpeed + 40);
+  rightBack.setSpeed(motorSpeed + 40);
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
 
-  leftFront.run(RELEASE);
-  leftBack.run(RELEASE);
+  // Left wheels backward (pivot)
+  leftFront.setSpeed(motorSpeed + 40);
+  leftBack.setSpeed(motorSpeed + 40);
+  leftFront.run(BACKWARD);
+  leftBack.run(BACKWARD);
 
   currentState = TURNING;
 }
 
 void turnRight_Encoder() {
   turningLeft = false;
-  turnStartLeftTicks = encoderCount[2];
+  Serial.println("TURN RIGHT");
+
+  turnStartLeftTicks  = encoderCount[2];
   turnStartRightTicks = encoderCount[0];
 
-  // Left wheels forward, right wheels stop
-  leftFront.setSpeed(motorSpeed + 50);
-  leftBack.setSpeed(motorSpeed + 50);
+  // Left wheels forward
+  leftFront.setSpeed(motorSpeed + 40);
+  leftBack.setSpeed(motorSpeed + 40);
   leftFront.run(FORWARD);
   leftBack.run(FORWARD);
 
-  rightFront.run(RELEASE);
-  rightBack.run(RELEASE);
+  // Right wheels backward (pivot)
+  rightFront.setSpeed(motorSpeed + 40);
+  rightBack.setSpeed(motorSpeed + 40);
+  rightFront.run(BACKWARD);
+  rightBack.run(BACKWARD);
 
   currentState = TURNING;
 }
 
+// ============================================================
+// FIXED encoder turn completion
+// ============================================================
 bool checkTurnComplete() {
   long leftDelta  = labs(encoderCount[2] - turnStartLeftTicks);
   long rightDelta = labs(encoderCount[0] - turnStartRightTicks);
 
-  long rotationTicks = leftDelta + rightDelta;  // combined motion
+  long maxDelta = max(leftDelta, rightDelta);
 
-  return rotationTicks >= TURN_90_TICKS;
+  // exit when EITHER wheel has rotated enough
+  return maxDelta >= TURN_90_TICKS;
 }
+
 
 // ============================================================
 // SCANNING AND TURN DECISION
 // ============================================================
 void handleScanning() {
+  Serial.println("scanning");
   stopMove();
 
   servoLook.write(90);
@@ -222,12 +244,12 @@ void handleScanning() {
 
   // LEFT side
   servoLook.write(160);
-  delay(400);
+  delay(500);
   int leftDist = getDistance();
 
   // RIGHT side
   servoLook.write(20);
-  delay(400);
+  delay(500);
   int rightDist = getDistance();
 
   servoLook.write(90);
@@ -269,8 +291,8 @@ int getDistance() {
     delayMicroseconds(10);
     digitalWrite(TRIG_PIN, LOW);
 
-    long duration = pulseIn(ECHO_PIN, HIGH, 25000);
-    if (duration == 0) duration = 30000;
+    long duration = pulseIn(ECHO_PIN, HIGH, 35000);
+    if (duration == 0) duration = 30000; // treat as far away
 
     durationSum += duration;
     delay(10);
