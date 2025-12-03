@@ -1,341 +1,221 @@
 #include <AFMotor.h>
-#include <Arduino.h> 
+#include <Servo.h>
 
 // ============================================================
-// CONSTANTS & SETTINGS
+// MOTOR SETUP (4WD, driven as left pair + right pair)
 // ============================================================
-int motorSpeed = 150;
-int motorOffset = 6;
-int turnSpeed = motorSpeed + 40; 
-
-const long TURN_90_TICKS = 595; 
-
-
-// ============================================================
-// STATE MACHINE FOR PATH FOLLOWING
-// ============================================================
-enum PathState { 
-  READY, 
-  STEP_1_MOVE, STEP_2_TURN, STEP_3_MOVE, STEP_4_TURN, STEP_5_MOVE, STEP_6_TURN, 
-  STEP_7_MOVE, STEP_8_TURN, STEP_9_MOVE, STEP_10_TURN, STEP_11_MOVE, STEP_12_TURN,
-  STEP_13_MOVE, STEP_14_TURN, STEP_15_MOVE, STEP_16_TURN, STEP_17_MOVE, STEP_18_TURN,
-  STEP_19_MOVE, 
-  FINISHED, 
-  MOVING, 
-  TURNING_LEFT, 
-  TURNING_RIGHT 
-};
-
-// State tracking variables
-enum PathState currentPathState = READY;
-enum PathState nextPathState = FINISHED; 
-
-// TIME-BASED MOVEMENT VARIABLES
-unsigned long moveStartTime = 0;
-long moveDurationMs = 0; 
-
-// ENCODER-BASED TURNING VARIABLES
-long turnStartLeftTicks = 0;
-long turnStartRightTicks = 0;
-
-// ENCODERS 
-#define ENC1_A 18 // Left Front 
-#define ENC1_B 40
-#define ENC2_A 19 // Left Rear
-#define ENC2_B 44
-#define ENC3_A 20 // Right Rear 
-#define ENC3_B 28
-#define ENC4_A 21 // Right Front
-#define ENC4_B 22
-
-volatile long encoderCount[4] = {0,0,0,0}; 
-
-
-// ============================================================
-// FIXED encoder turn completion 
-// ============================================================
-bool checkTurnComplete() {
-  // Note: The primary tracking encoders are 0 (LF) and 2 (RR)
-  long leftDelta  = labs(encoderCount[0] - turnStartLeftTicks);
-  long rightDelta = labs(encoderCount[2] - turnStartRightTicks);
-  long maxDelta = max(leftDelta, rightDelta);
-
-  return maxDelta >= TURN_90_TICKS;
-}
-
-bool checkTimeComplete() {
-    // Check if the current time minus the start time is greater than or equal to the desired duration.
-    return (millis() - moveStartTime) >= moveDurationMs;
-}
-
-
-// ============================================================
-// MOTORS (CRITICAL FIX: BOTH LEFT MOTORS MAPPED TO M2)
-// ============================================================
-// 4: Right Front (RF)
 AF_DCMotor rightFront(4);
-// 3: Right Back (RB)
 AF_DCMotor rightBack(3);
-// 2: Left Front (LF) <-- M2
-AF_DCMotor leftFront(2);
-// 1: Left Back (LB)  <-- M2 (Shares port with Left Front)
 AF_DCMotor leftBack(2);
+AF_DCMotor leftFront(1);
 
-
-// ============================================================
-// ENCODER ISRS
-// ============================================================
-
-// Encoder ISRs: Using 2X counting
-void encoder1A_ISR() { encoderCount[0] += digitalRead(ENC1_B) ? 1 : -1; }
-void encoder2A_ISR() { encoderCount[1] += digitalRead(ENC2_B) ? 1 : -1; }
-
-// RIGHT SIDE - Reversed signs for correction
-void encoder3A_ISR() { encoderCount[2] += digitalRead(ENC3_B) ? -1 : 1; } 
-void encoder4A_ISR() { encoderCount[3] += digitalRead(ENC4_B) ? -1 : 1; } 
-
+const int motorSpeed = 120;      
+const int pivotSpeed = 150;      
+const int PIVOT_BOOST = 50;      
 
 // ============================================================
-// BASIC MOVEMENT UTILITIES
+// ENCODER INPUTS
 // ============================================================
-void stopMove() {
-  rightFront.run(RELEASE);
-  rightBack.run(RELEASE);
+int leftCount = 0;
+int rightCount = 0;
+
+// LEFT wheel encoder
+const int leftEnc_A = 18;
+const int leftEnc_B = 19;
+
+// RIGHT wheel encoder
+const int rightEnc_A = 20;
+const int rightEnc_B = 21;
+
+// ISR (A channels only)
+void leftISR()  { leftCount++; }
+void rightISR() { rightCount++; }
+
+// ============================================================
+// Stop all motors
+// ============================================================
+void allStop() {
   leftFront.run(RELEASE);
   leftBack.run(RELEASE);
+  rightFront.run(RELEASE);
+  rightBack.run(RELEASE);
 }
-
-void resetEncoders() {
-  encoderCount[0] = 0; 
-  encoderCount[2] = 0; 
-}
-
-/**
- * **NON-BLOCKING moveForward()**
- * Starts the forward movement, sets the duration, and immediately transitions 
- * to the MOVING state so that the loop() can continue.
- */
-void moveForward(long durationMs, PathState nextState) {
-    // CRITICAL: Only run if we are transitioning from a step state, not MOVING.
-    if (currentPathState == MOVING) {
-        return;
-    }
-
-    Serial.print("Starting Move Forward for: ");
-    Serial.print(durationMs);
-    Serial.println("ms (Non-Blocking)");
-
-    // 1. Configure the motors
-    leftFront.setSpeed(motorSpeed);
-    leftBack.setSpeed(motorSpeed);
-    rightFront.setSpeed(motorSpeed + motorOffset);
-    rightBack.setSpeed(motorSpeed + motorOffset);
-
-    leftFront.run(FORWARD); // Activates M2 (Left Front and Back)
-    leftBack.run(FORWARD);  // Redundantly activates M2 again (ensures all code paths hit the working motor)
-    rightFront.run(FORWARD);
-    rightBack.run(FORWARD);
-
-    // 2. Store timing and state data for the state machine
-    nextPathState = nextState;
-    moveDurationMs = durationMs; // <--- Sets the duration
-    moveStartTime = millis();     // <--- Sets the start time
-
-    // 3. Transition to the MOVING state
-    currentPathState = MOVING;
-}
-
 
 // ============================================================
-// ENCODER TURNING 
+// Drive straight with encoder correction (NO ANTISTALL)
 // ============================================================
+void driveForwardCounts(long targetCounts) {
+  leftCount = 0;
+  rightCount = 0;
 
-void turnLeft_Encoder(PathState nextState) {
-  Serial.print("Starting TURN LEFT. Target Ticks: ");
-  Serial.println(TURN_90_TICKS);
+  // Start motors at normal speed
+  leftFront.setSpeed(motorSpeed);
+  leftBack.setSpeed(motorSpeed);
+  rightFront.setSpeed(motorSpeed);
+  rightBack.setSpeed(motorSpeed);
 
-  // Store the next state
-  nextPathState = nextState;
-
-  // Record starting ticks from the primary tracking wheels:
-  turnStartLeftTicks  = encoderCount[0]; 
-  turnStartRightTicks = encoderCount[2]; 
-
-  // Left wheels backward (pivot) - Both will run M2 backward
-  leftFront.setSpeed(turnSpeed);
-  leftBack.setSpeed(turnSpeed);
-  leftFront.run(BACKWARD);
-  leftBack.run(BACKWARD);
-  
-  // Right wheels forward
-  rightFront.setSpeed(turnSpeed);
-  rightBack.setSpeed(turnSpeed);
+  leftFront.run(FORWARD);
+  leftBack.run(FORWARD);
   rightFront.run(FORWARD);
   rightBack.run(FORWARD);
 
-  currentPathState = TURNING_LEFT;
-}
+  while ((leftCount + rightCount) / 2 < targetCounts) {
+    long diff = leftCount - rightCount;
 
-void turnRight_Encoder(PathState nextState) {
-  Serial.print("Starting TURN RIGHT. Target Ticks: ");
-  Serial.println(TURN_90_TICKS);
+    int L = motorSpeed;
+    int R = motorSpeed;
 
-  // Store the next state
-  nextPathState = nextState;
+    if (diff > 5) {
+      R += 5;
+    } else if (diff < -5) {
+      L += 5;
+    }
 
-  // Record starting ticks
-  turnStartLeftTicks  = encoderCount[0]; 
-  turnStartRightTicks = encoderCount[2]; 
+    L = constrain(L, 0, 255);
+    R = constrain(R, 0, 255);
 
-  // Right wheels backward (pivot)
-  rightFront.setSpeed(turnSpeed);
-  rightBack.setSpeed(turnSpeed);
-  rightFront.run(BACKWARD);
-  rightBack.run(BACKWARD);
-  
-  // Left wheels forward - Both will run M2 forward
-  leftFront.setSpeed(turnSpeed);
-  leftBack.setSpeed(turnSpeed);
-  leftFront.run(FORWARD);
-  leftBack.run(FORWARD);
-
-  currentPathState = TURNING_RIGHT;
-}
-
-
-// ============================================================
-// PATH HANDLER (TIME DIVIDED BY 100)
-// ============================================================
-void handlePath() {
-  switch (currentPathState) {
-    case READY:
-      resetEncoders();
-      currentPathState = STEP_1_MOVE;
-      break;
-
-
-    case STEP_1_MOVE:
-      moveForward(8, STEP_2_TURN); 
-      break;
-    case STEP_2_TURN:
-      turnRight_Encoder(STEP_3_MOVE); 
-      break;
-
-    case STEP_3_MOVE:
-      moveForward(24, STEP_4_TURN); 
-      break;
-    case STEP_4_TURN:
-      turnLeft_Encoder(STEP_5_MOVE); 
-      break;
-
-    case STEP_5_MOVE:
-      moveForward(16, STEP_6_TURN); 
-      break;
-    case STEP_6_TURN:
-      turnLeft_Encoder(STEP_7_MOVE); 
-      break;
-
-    case STEP_7_MOVE:
-      moveForward(24, STEP_8_TURN); 
-      break;
-    case STEP_8_TURN:
-      turnRight_Encoder(STEP_9_MOVE); 
-      break;
-
-    case STEP_9_MOVE:
-      moveForward(24, STEP_10_TURN); 
-      break;
-    case STEP_10_TURN:
-      turnRight_Encoder(STEP_11_MOVE); 
-      break;
-
-    case STEP_11_MOVE:
-      moveForward(16, STEP_12_TURN); 
-      break;
-    case STEP_12_TURN:
-      turnRight_Encoder(STEP_13_MOVE);
-      break;
-
-    case STEP_13_MOVE:
-      moveForward(8, STEP_14_TURN); 
-      break;
-    case STEP_14_TURN:
-      turnLeft_Encoder(STEP_15_MOVE);
-      break;
-
-    case STEP_15_MOVE:
-      moveForward(16, STEP_16_TURN);
-      break;
-    case STEP_16_TURN:
-      turnRight_Encoder(STEP_17_MOVE); 
-      break;
-
-    case STEP_17_MOVE:
-      moveForward(16, STEP_18_TURN);
-      break;
-    case STEP_18_TURN:
-      turnLeft_Encoder(STEP_19_MOVE);
-      break;
-
-    case STEP_19_MOVE:
-      moveForward(20, FINISHED);
-      break;
-
-    case FINISHED:
-      stopMove();
-      Serial.println("Path sequence FINISHED!");
-      break;
-
-    // --- HANDLERS FOR RUNNING STATES ---
-
-    case MOVING:
-      if (checkTimeComplete()) { 
-        stopMove();
-        Serial.println("Move (Time) complete. Advancing state.");
-        currentPathState = nextPathState; 
-      }
-      break;
-
-    case TURNING_LEFT:
-    case TURNING_RIGHT:
-      if (checkTurnComplete()) {
-        stopMove();
-        Serial.println("Turn (Encoder) complete. Advancing state.");
-        currentPathState = nextPathState; 
-        resetEncoders(); 
-      }
-      break;
+    leftFront.setSpeed(L);
+    leftBack.setSpeed(L);
+    rightFront.setSpeed(R);
+    rightBack.setSpeed(R);
   }
+
+  allStop();
+  delay(200);
 }
 
 // ============================================================
-// SETUP & LOOP
+// TIMED PIVOT TURNS
+// ============================================================
+const int TURN_DELAY_MS = 4000; 
+const int PRINT_INTERVAL = 50;   
+
+void pivotLeft() {
+  leftCount = 0;
+  rightCount = 0;
+
+  leftFront.run(BACKWARD);
+  leftBack.run(RELEASE);
+  rightFront.run(FORWARD);
+  rightBack.run(RELEASE);
+
+  leftFront.setSpeed(pivotSpeed + PIVOT_BOOST);
+  rightFront.setSpeed(pivotSpeed);
+
+  unsigned long start = millis();
+  unsigned long lastPrint = 0;
+
+  while (millis() - start < TURN_DELAY_MS) {
+    if (millis() - lastPrint >= PRINT_INTERVAL) {
+      lastPrint = millis();
+      Serial.print("L:");
+      Serial.print(leftCount);
+      Serial.print(" | R:");
+      Serial.println(rightCount);
+    }
+  }
+
+  allStop();
+  delay(200);
+}
+
+void pivotRight() {
+  leftCount = 0;
+  rightCount = 0;
+
+  leftFront.run(FORWARD);
+  leftBack.run(RELEASE);
+  rightFront.run(BACKWARD);
+  rightBack.run(RELEASE);
+
+  leftFront.setSpeed(pivotSpeed);
+  rightFront.setSpeed(pivotSpeed);
+
+  unsigned long start = millis();
+  unsigned long lastPrint = 0;
+
+  while (millis() - start < TURN_DELAY_MS) {
+    if (millis() - lastPrint >= PRINT_INTERVAL) {
+      lastPrint = millis();
+      Serial.print("L:");
+      Serial.print(leftCount);
+      Serial.print(" | R:");
+      Serial.println(rightCount);
+    }
+  }
+
+  allStop();
+  delay(200);
+}
+
+// ============================================================
+// Convert FEET → ENCODER COUNTS
+// ============================================================
+long feetToCounts(float feet) {
+  const float wheelFeet = 0.742f;
+  float revs = feet / wheelFeet;
+  return (long)(revs * 360.0f);
+}
+
+// ============================================================
+// HARD-CODED PATH
+// ============================================================
+void runPath() {
+
+  driveForwardCounts(feetToCounts(1.0));
+  pivotRight();
+
+  driveForwardCounts(feetToCounts(4.5));
+  pivotLeft();
+
+  driveForwardCounts(feetToCounts(2.5));
+  pivotLeft();
+
+  driveForwardCounts(feetToCounts(3.5));
+  pivotRight();
+
+  driveForwardCounts(feetToCounts(3.0));
+  pivotRight();
+
+  driveForwardCounts(feetToCounts(2.5));
+  pivotRight();
+
+  driveForwardCounts(feetToCounts(1.5));
+  pivotLeft();
+
+  driveForwardCounts(feetToCounts(2.0));
+  pivotRight();
+
+  driveForwardCounts(feetToCounts(1.0));
+  pivotLeft();
+
+  driveForwardCounts(feetToCounts(1.5));
+  pivotLeft();
+
+  driveForwardCounts(feetToCounts(2.5));
+
+  allStop();
+  Serial.println("PATH COMPLETE");
+}
+
 // ============================================================
 void setup() {
-  Serial.begin(9600);
-  Serial.println("Starting Time-Based Path Follower Setup...");
+  Serial.begin(115200);
 
-  // Set up encoder pins with internal pull-up resistors
-  pinMode(ENC1_A, INPUT_PULLUP);
-  pinMode(ENC1_B, INPUT_PULLUP);
-  pinMode(ENC2_A, INPUT_PULLUP);
-  pinMode(ENC2_B, INPUT_PULLUP);
-  pinMode(ENC3_A, INPUT_PULLUP);
-  pinMode(ENC3_B, INPUT_PULLUP);
-  pinMode(ENC4_A, INPUT_PULLUP);
-  pinMode(ENC4_B, INPUT_PULLUP);
+  pinMode(leftEnc_A, INPUT_PULLUP);
+  pinMode(leftEnc_B, INPUT_PULLUP);
+  pinMode(rightEnc_A, INPUT_PULLUP);
+  pinMode(rightEnc_B, INPUT_PULLUP);
 
-  // Attach interrupts
-  attachInterrupt(digitalPinToInterrupt(ENC1_A), encoder1A_ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC2_A), encoder2A_ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC3_A), encoder3A_ISR, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ENC4_A), encoder4A_ISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(leftEnc_A), leftISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(rightEnc_A), rightISR, RISING);
 
-  stopMove();
-  Serial.println("Path Follower Ready.");
+  allStop();
+  delay(1000);
+
+  Serial.println("Robot Ready");
+
+  runPath();   // still auto-starting, can remove if you want manual control
 }
 
-void loop() {
-  handlePath();
-  delay(10); 
-}
+void loop() {}
