@@ -16,13 +16,14 @@ Servo scanServo;
 const int SERVO_PIN = 23;
 int servoForward = 90;
 
-// ***** MUCH FASTER SWEEP *****
+// ***** SLOWED DOWN SWEEP *****
 int sweepPos  = 90;
-int sweepStep = 4;        // was 1 → now much faster
+int sweepStep = 4;        
 unsigned long lastServoMove = 0;
-const int sweepInterval = 8;  // was 20 → now fast response
-const int sweepMin = 60;      // was 20
-const int sweepMax = 120;     // was 160
+// Increased from 4 to 12 for slower, more reliable scans.
+const int sweepInterval = 12;   
+const int sweepMin = 60;      
+const int sweepMax = 120;     
 bool sweeping = true;
 
 // ----------------- Encoders -----------------
@@ -37,10 +38,16 @@ void rightISR() { rightTicks++; }
 
 // ----------------- Robot Params -----------------
 const float SAFE_STOP_DIST = 15.0;
-uint8_t currentFwdSpeed = 120;
-const uint8_t FWD_SPEED = 120;
+// FORWARD SPEED REDUCED TO 85
+uint8_t currentFwdSpeed = 85; 
+const uint8_t FWD_SPEED = 85;
 const uint8_t TURN_SPEED = 200;
-const uint8_t REV_SPEED = 120;
+const uint8_t REV_SPEED = 100;
+const float CLEARANCE_MARGIN = 5.0; // Margin to consider one side 'clearer'
+
+// --- TURN TIMING CONSTANTS ---
+const int PIVOT_TURN_90_DELAY = 900; // Standard delay for approx 90 degrees
+const int TURN_180_DELAY     = PIVOT_TURN_90_DELAY * 2; // 1100ms for 180 degrees fail-safe
 
 // =======================================================
 //                    Helper Functions
@@ -95,7 +102,7 @@ void applyEncoderCorrection(bool movingForward) {
 
   const int strongGain = 5;   // slightly higher to keep perfect straightness
   const int baseBoost  = 18;
-  const int maxCorr    = 90;
+  const int maxCorr = 90;
 
   int correction = strongGain * diff;
 
@@ -130,6 +137,17 @@ void forwardCorrected() {
   applyEncoderCorrection(true);
 }
 
+// New function for short forward movement
+void moveForwardShort() {
+  motor1.setSpeed(FWD_SPEED); motor1.run(FORWARD);
+  motor2.setSpeed(FWD_SPEED); motor2.run(FORWARD);
+  motor3.setSpeed(FWD_SPEED); motor3.run(FORWARD);
+  motor4.setSpeed(FWD_SPEED); motor4.run(FORWARD);
+
+  delay(500); // Move forward for half a second
+  stopAll();
+}
+
 void reverseShort() {
   motor1.setSpeed(REV_SPEED); motor1.run(BACKWARD);
   motor2.setSpeed(REV_SPEED); motor2.run(BACKWARD);
@@ -140,14 +158,14 @@ void reverseShort() {
   stopAll();
 }
 
-// Pivot turns
+// Pivot turns (~90 degrees)
 void pivotTurnRight() {
   motor1.setSpeed(TURN_SPEED); motor1.run(FORWARD);
   motor2.setSpeed(TURN_SPEED); motor2.run(FORWARD);
   motor3.setSpeed(TURN_SPEED); motor3.run(BACKWARD);
   motor4.setSpeed(TURN_SPEED); motor4.run(BACKWARD);
 
-  delay(550);  // reduced for faster scanning
+  delay(PIVOT_TURN_90_DELAY); 
   stopAll();
 }
 
@@ -157,9 +175,61 @@ void pivotTurnLeft() {
   motor3.setSpeed(TURN_SPEED); motor3.run(FORWARD);
   motor4.setSpeed(TURN_SPEED); motor4.run(FORWARD);
 
-  delay(550);
+  delay(PIVOT_TURN_90_DELAY);
   stopAll();
 }
+
+// New function for 180-degree turn (Fail-safe maneuver)
+void pivotTurn180() {
+  motor1.setSpeed(TURN_SPEED); motor1.run(FORWARD);
+  motor2.setSpeed(TURN_SPEED); motor2.run(FORWARD);
+  motor3.setSpeed(TURN_SPEED); motor3.run(BACKWARD);
+  motor4.setSpeed(TURN_SPEED); motor4.run(BACKWARD);
+
+  delay(TURN_180_DELAY); 
+  stopAll();
+}
+
+
+// =======================================================
+//                     NEW SCAN FUNCTION (Refined)
+// =======================================================
+// Performs a focused scan and returns the open direction:
+// 1 = Left, -1 = Right, 0 = Blocked
+int performFullScan() {
+  sweeping = false; // Stop the continuous sweep during the forced scan
+  float distLeft = 0;
+  float distRight = 0;
+  
+  // 1. Scan Left Extreme
+  scanServo.write(sweepMin); 
+  delay(150); // Allow time for servo to move
+  distLeft = readDistance();
+  
+  // 2. Scan Right Extreme
+  scanServo.write(sweepMax);
+  delay(150);
+  distRight = readDistance();
+
+  // 3. Return to center
+  scanServo.write(servoForward);
+  delay(150);
+  sweeping = true; // Resume continuous sweep
+
+  // Decision logic
+  Serial.print("Scan L:"); Serial.print(distLeft); 
+  Serial.print(" | R:"); Serial.println(distRight);
+
+  // Check if one side is significantly clearer than the other
+  if (distLeft > SAFE_STOP_DIST && distLeft > (distRight + CLEARANCE_MARGIN)) return 1;  // Go Left (and it's much clearer than right)
+  if (distRight > SAFE_STOP_DIST && distRight > (distLeft + CLEARANCE_MARGIN)) return -1; // Go Right (and it's much clearer than left)
+  if (distLeft > SAFE_STOP_DIST && distRight > SAFE_STOP_DIST) return (random(0,2) == 0 ? 1 : -1); // Both clear, pick randomly
+  if (distLeft > SAFE_STOP_DIST) return 1; // Only left is clear
+  if (distRight > SAFE_STOP_DIST) return -1; // Only right is clear
+  
+  return 0; // Completely blocked
+}
+
 
 // =======================================================
 //                        Setup
@@ -171,7 +241,7 @@ void setup() {
   pinMode(echoPin, INPUT);
 
   scanServo.attach(SERVO_PIN);
-  scanServo.write(90);
+  scanServo.write(servoForward); // Set to 90
 
   pinMode(leftEnc_A, INPUT_PULLUP);
   pinMode(rightEnc_A, INPUT_PULLUP);
@@ -183,46 +253,65 @@ void setup() {
 }
 
 // =======================================================
-//                         Loop
+//                         Loop (Refined Escape Logic)
 // =======================================================
 void loop() {
 
+  // Sweep must run continuously unless a full scan is needed
+  updateServoSweep(); 
+  
   float dist = readDistance();
 
   if (dist > 0 && dist < SAFE_STOP_DIST) {
 
+    // *** STOP MOTORS IMMEDIATELY ***
     stopAll();
-    Serial.println("*** Obstacle ***");
-
-    reverseShort();
+    Serial.println("*** Obstacle detected, beginning escape routine. ***");
 
     bool cleared = false;
     int attempts = 0;
 
-    sweeping = true;
-
     while (!cleared && attempts < 5) {
       attempts++;
-      updateServoSweep();
+      
+      // 1. REVERSE to gain space for turn
+      reverseShort();
+      
+      // 2. PERFORM FULL SCAN TO DETERMINE TURN DIRECTION
+      int turnDir = performFullScan(); 
+      
+      if (turnDir == 1) { // Left is clearer
+        pivotTurnLeft();
+      } else if (turnDir == -1) { // Right is clearer
+        pivotTurnRight();
+      } else { // Both sides blocked or unclear, try a small random turn to wiggle out
+        Serial.println("No clear direction found, wiggling...");
+        if (random(0,2)==0) pivotTurnLeft();
+        else pivotTurnRight();
+      }
 
-      if (random(0,2)==0) pivotTurnLeft();
-      else pivotTurnRight();
-
-      float nd = readDistance();
+      // 3. CHECK DISTANCE after turn/wiggle
+      float nd = readDistance(); 
 
       if (nd > SAFE_STOP_DIST || nd < 0) {
         cleared = true;
         leftTicks = rightTicks = 0;
+        Serial.println("Path cleared, resuming forward movement.");
+      } else {
+          Serial.print("Path still blocked after turn ");
+          Serial.print(attempts);
+          Serial.println(", re-scanning.");
       }
     }
 
     if (!cleared) {
-      stopAll();
-      Serial.println("*** STUCK ***");
-      return;
+      // If attempts reach 5 and path is still blocked
+      Serial.println("*** STUCK - Executing 180-degree fail-safe turn and short move ***");
+      pivotTurn180();  // Execute the decisive 180-degree turn
+      moveForwardShort(); // Move forward to try and clear the conflict area
     }
   }
 
+  // Only move forward if not blocked
   forwardCorrected();
-  updateServoSweep();
 }

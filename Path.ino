@@ -11,23 +11,24 @@ AF_DCMotor rightFront(4);  // M4
 // ============================================================
 // CONSTANTS & SETTINGS
 // ============================================================
-int spd = 220;                  
-const int LEFT_OFFSET = 40;     
+int spd = 150;                  
+const int STRAIGHT_SPEED = 150; 
+// FIX: Boost for the slower right side motors to stop drift.
+const int RIGHT_SIDE_BOOST = 30; 
 
+// Left side speed correction for right turns
+const int LEFT_TURN_CORRECTION = 26; 
+// Right side speed correction for left turns
+const int RIGHT_TURN_CORRECTION = 23;
 // PIVOT TURN TIMING
-const unsigned long SWING_DELAY_MS = 6000; 
-const unsigned long KICK_START_MS = 10;
+const unsigned long TURN_DURATION_MS = 1600; 
 
 // ============================================================
-// DISTANCE TIMINGS (CALIBRATION REQUIRED)
+// DISTANCE TIMINGS (REDUCED BY HALF)
 // ============================================================
-const unsigned long DIST_1_FOOT_MS    = 1000;
-const unsigned long DIST_1_5_FOOT_MS  = 1500;
-const unsigned long DIST_2_FOOT_MS    = 2000;
-const unsigned long DIST_2_5_FOOT_MS  = 2500;
-const unsigned long DIST_3_FOOT_MS    = 3000;
-const unsigned long DIST_3_5_FOOT_MS  = 3500;
-const unsigned long DIST_4_5_FOOT_MS  = 4500;
+// Original Value * (1/2)
+const unsigned long DIST_1_FOOT_MS = 334; 
+
 
 // ============================================================
 // HELPER FUNCTIONS FOR MOTOR GROUPING (4WD)
@@ -53,31 +54,36 @@ void runRightMotors(uint8_t dir) {
 }
 
 // ============================================================
-// STOP MOVEMENT
+// STOP MOVEMENT (Using RELEASE)
 // ============================================================
 void stopMove() {
-  runLeftMotors(BRAKE);
-  runRightMotors(BRAKE);
+  runLeftMotors(RELEASE); 
+  runRightMotors(RELEASE); 
   delay(200);
 }
 
 // ============================================================
-// FORWARD / BACKWARD
+// FORWARD / BACKWARD (Using RIGHT_SIDE_BOOST)
 // ============================================================
 void moveForward(unsigned long t) {
-  setLeftSpeed(min(spd + LEFT_OFFSET, 255));  
-  setRightSpeed(spd);
+  // Left side runs at base speed
+  setLeftSpeed(STRAIGHT_SPEED);  
+  // Right side runs at base speed PLUS boost for correction
+  setRightSpeed(min(STRAIGHT_SPEED + RIGHT_SIDE_BOOST, 255));
 
   runLeftMotors(FORWARD);
   runRightMotors(FORWARD);
-
+  t = t * DIST_1_FOOT_MS;
   delay(t);
   stopMove();
 }
 
 void moveBackward(unsigned long t) {
-  setLeftSpeed(min(spd + LEFT_OFFSET, 255));
-  setRightSpeed(spd);
+  // Left side runs at base speed
+
+  setLeftSpeed(STRAIGHT_SPEED);
+  // Right side runs at base speed PLUS boost for correction
+  setRightSpeed(min(STRAIGHT_SPEED + RIGHT_SIDE_BOOST, 255));
 
   runLeftMotors(BACKWARD);
   runRightMotors(BACKWARD);
@@ -87,36 +93,33 @@ void moveBackward(unsigned long t) {
 }
 
 // ============================================================
-// PIVOT TURNS (TIME-BASED)
-//  - Left pivot: Left wheels BRAKE, Right wheels FORWARD
-//  - Right pivot: Right wheels BRAKE, Left wheels FORWARD
+// PIVOT TURNS
 // ============================================================
 void turnLeftPivot() {
-  // Kick start on right side
-  setRightSpeed(255);
-  runRightMotors(FORWARD);
-  
-  runLeftMotors(BRAKE);
-  delay(KICK_START_MS);
+  // Set speed for spin turn
+  setRightSpeed(spd - RIGHT_TURN_CORRECTION);
+  setLeftSpeed(spd); 
 
-  // Normal pivot
-  setRightSpeed(spd);
-  delay(SWING_DELAY_MS - KICK_START_MS);
+  // Run pivot (Left BACKWARD, Right FORWARD for spin turn)
+  runRightMotors(FORWARD);
+  runLeftMotors(BACKWARD); 
+  
+  delay(TURN_DURATION_MS);
 
   stopMove();
 }
 
 void turnRightPivot() {
-  // Kick start on left side
-  setLeftSpeed(255);
+  // Set speed for spin turn
+  setRightSpeed(spd); 
+    // FIXED: Left speed decreased by 26 for correction
+  setLeftSpeed(spd - LEFT_TURN_CORRECTION); 
+  
+  // Run pivot (Left FORWARD, Right BACKWARD for spin turn)
   runLeftMotors(FORWARD);
-
-  runRightMotors(BRAKE);
-  delay(KICK_START_MS);
-
-  // Normal pivot
-  setLeftSpeed(spd);
-  delay(SWING_DELAY_MS - KICK_START_MS);
+  runRightMotors(BACKWARD); 
+  
+  delay(TURN_DURATION_MS); // 900ms
 
   stopMove();
 }
@@ -127,45 +130,50 @@ void turnRightPivot() {
 void followPath() {
   Serial.println("Starting Path...");
 
-  moveForward(DIST_1_FOOT_MS); 
-  turnRightPivot();
-
-  moveForward(DIST_4_5_FOOT_MS);
+  moveForward(5.5); 
   turnLeftPivot();
 
-  moveForward(DIST_2_5_FOOT_MS);
+  moveForward(3);
   turnLeftPivot();
 
-  moveForward(DIST_3_5_FOOT_MS);
+  moveForward(4.5);
   turnRightPivot();
 
-  moveForward(DIST_3_FOOT_MS);
+  moveForward(5.5); 
   turnRightPivot();
 
-  moveForward(DIST_2_5_FOOT_MS);
+  moveForward(3.5); //5th fixed
   turnRightPivot();
 
-  moveForward(DIST_1_5_FOOT_MS);
+  moveForward(3.4); 
   turnLeftPivot();
 
-  moveForward(DIST_2_FOOT_MS);
-  turnRightPivot();
-
-  moveForward(DIST_1_FOOT_MS);
+  moveForward(4.5);
   turnLeftPivot();
 
-  moveForward(DIST_1_5_FOOT_MS);
-  turnLeftPivot();
-
-  moveForward(DIST_2_5_FOOT_MS);
+  moveForward(3);
+  
 
   stopMove();
   Serial.println("Path Finished!");
 }
 
+// ============================================================
+// SETUP FUNCTION (Startup Fix Retained)
+// ============================================================
 void setup() {
   Serial.begin(9600);
+  
+  // Retain FIX: Initialize speeds AND explicitly stop motors BEFORE any delay
+  setLeftSpeed(STRAIGHT_SPEED); 
+  setRightSpeed(STRAIGHT_SPEED);
+  
+  runLeftMotors(RELEASE); 
+  runRightMotors(RELEASE); 
+
   delay(1000);
+  
+  // Now safely start the path
   followPath();
 }
 

@@ -1,5 +1,4 @@
 #include <AFMotor.h>
-#include <Servo.h>
 
 // ============================================================
 // MOTOR SETUP (4WD, driven as left pair + right pair)
@@ -42,7 +41,7 @@ void allStop() {
 }
 
 // ============================================================
-// Drive straight with encoder correction (NO ANTISTALL)
+// Drive straight with encoder correction
 // ============================================================
 void driveForwardCounts(long targetCounts) {
   leftCount = 0;
@@ -65,10 +64,11 @@ void driveForwardCounts(long targetCounts) {
     int L = motorSpeed;
     int R = motorSpeed;
 
+    // Simple differential correction
     if (diff > 5) {
-      R += 5;
+      R += 5; // Left is faster, boost Right
     } else if (diff < -5) {
-      L += 5;
+      L += 5; // Right is faster, boost Left
     }
 
     L = constrain(L, 0, 255);
@@ -85,7 +85,7 @@ void driveForwardCounts(long targetCounts) {
 }
 
 // ============================================================
-// TIMED PIVOT TURNS
+// TIMED PIVOT TURNS (KICK START REMOVED)
 // ============================================================
 const int TURN_DELAY_MS = 4000; 
 const int PRINT_INTERVAL = 50;   
@@ -94,13 +94,17 @@ void pivotLeft() {
   leftCount = 0;
   rightCount = 0;
 
+  // Set direction
   leftFront.run(BACKWARD);
-  leftBack.run(RELEASE);
+  leftBack.run(BACKWARD);
   rightFront.run(FORWARD);
-  rightBack.run(RELEASE);
+  rightBack.run(FORWARD);
 
+  // Set speed (PIVOT_BOOST retained as speed differential)
   leftFront.setSpeed(pivotSpeed + PIVOT_BOOST);
+  leftBack.setSpeed(pivotSpeed + PIVOT_BOOST);
   rightFront.setSpeed(pivotSpeed);
+  rightBack.setSpeed(pivotSpeed);
 
   unsigned long start = millis();
   unsigned long lastPrint = 0;
@@ -123,13 +127,17 @@ void pivotRight() {
   leftCount = 0;
   rightCount = 0;
 
+  // Set direction
   leftFront.run(FORWARD);
-  leftBack.run(RELEASE);
+  leftBack.run(FORWARD);
   rightFront.run(BACKWARD);
-  rightBack.run(RELEASE);
+  rightBack.run(BACKWARD);
 
+  // Set speed (PIVOT_BOOST retained as speed differential)
   leftFront.setSpeed(pivotSpeed);
-  rightFront.setSpeed(pivotSpeed);
+  leftBack.setSpeed(pivotSpeed);
+  rightFront.setSpeed(pivotSpeed + PIVOT_BOOST);
+  rightBack.setSpeed(pivotSpeed + PIVOT_BOOST);
 
   unsigned long start = millis();
   unsigned long lastPrint = 0;
@@ -149,18 +157,20 @@ void pivotRight() {
 }
 
 // ============================================================
-// Convert FEET → ENCODER COUNTS
+// Convert FEET → ENCODER COUNTS (USING 485.17 COUNTS/FOOT)
 // ============================================================
 long feetToCounts(float feet) {
-  const float wheelFeet = 0.742f;
-  float revs = feet / wheelFeet;
-  return (long)(revs * 360.0f);
+  // Calculated value for 72mm wheel with 360 CPR: (1 ft / 0.7420 ft/rev) * 360 counts/rev
+  const float COUNTS_PER_FOOT = 485.17f; 
+  return (long)(feet * COUNTS_PER_FOOT);
 }
 
 // ============================================================
 // HARD-CODED PATH
 // ============================================================
 void runPath() {
+
+  Serial.println("Starting Path..."); // Added start print
 
   driveForwardCounts(feetToCounts(1.0));
   pivotRight();
@@ -207,15 +217,25 @@ void setup() {
   pinMode(rightEnc_A, INPUT_PULLUP);
   pinMode(rightEnc_B, INPUT_PULLUP);
 
-  attachInterrupt(digitalPinToInterrupt(leftEnc_A), leftISR, RISING);
-  attachInterrupt(digitalPinToInterrupt(rightEnc_A), rightISR, RISING);
+  attachInterrupt(digitalPinToInterrupt(leftEnc_A), leftISR, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(rightEnc_A), rightISR, CHANGE);
 
-  allStop();
+  // === CRITICAL FIX: Initialization prevents full-speed startup ===
+  // 1. Set the speed for ALL motors (initializes PWM hardware).
+  leftFront.setSpeed(motorSpeed);
+  leftBack.setSpeed(motorSpeed);
+  rightFront.setSpeed(motorSpeed);
+  rightBack.setSpeed(motorSpeed);
+  
+  // 2. Explicitly stop/release them right away.
+  allStop(); 
+  // === FIX END ===
+
   delay(1000);
 
   Serial.println("Robot Ready");
 
-  runPath();   // still auto-starting, can remove if you want manual control
+  runPath();   
 }
 
 void loop() {}
